@@ -1,38 +1,110 @@
-.App {
-  text-align: center;
+/* =========================================
+   1. GLOBAL SETTINGS & FONTS
+   ========================================= */
+@import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+
+body {
+  font-family: 'Prompt', sans-serif;
+  background-color: #ffffff;
+  color: #1a1a1a;
+  margin: 0;
+  background-image: radial-gradient(#e5e5e5 1.5px, transparent 1.5px);
+  background-size: 40px 40px;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+a { text-decoration: none; color: inherit; }
+
+/* =========================================
+   2. NAVBAR
+   ========================================= */
+.navbar {
+  display: flex; justify-content: center; align-items: center;
+  padding: 40px; position: relative; background-color: #ffffff;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 100;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
+.logo { position: absolute; left: 40px; font-size: 1.8rem; font-weight: 700; display: flex; gap: 10px; align-items: center; }
+.logo-img { height: 35px; width: auto; }
+.menu { display: flex; gap: 30px; }
+.menu a:hover { color: #000; }
+.contact-btn { position: absolute; right: 40px; background: #000; color: #fff; padding: 10px 25px; border-radius: 50px; border: none; cursor: pointer; transition: 0.3s; font-family: 'Prompt', sans-serif; }
+.contact-btn:hover { background: #ff4757; transform: translateY(-2px); }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
+/* =========================================
+   3. HERO SECTION (ส่วนหัวข้อใหญ่)
+   ========================================= */
+.hero-section { display: flex; flex-direction: column; align-items: center; padding: 100px 20px; text-align: center; }
+h1 { font-family: 'Prompt', sans-serif; font-size: 5rem; font-weight: 600; line-height: 1.3; margin-bottom: 40px; }
+.highlight { font-family: 'Prompt', sans-serif; font-style: italic; color: #ff4757; }
+.hero-subtitle { color: #888; font-size: 0.9rem; margin-top: 20px; }
 
-.App-link {
-  color: #61dafb;
-}
+/* Search Box */
+.search-box-container { display: flex; align-items: center; width: 100%; max-width: 650px; background: #fff; border: 1px solid #e0e0e0; border-radius: 50px; padding: 8px 8px 8px 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); transition: 0.3s; }
+.search-box-container:hover { box-shadow: 0 15px 50px rgba(0,0,0,0.12); }
+.search-box-container input { flex-grow: 1;padding: 10px; border: none; outline: none; font-size: 1.1rem; font-family: 'Prompt', sans-serif; }
+.analyze-btn { background: #000; color: #fff; border: none; border-radius: 40px; padding: 14px 40px; cursor: pointer; transition: 0.2s; font-family: 'Prompt', sans-serif; }
+.analyze-btn:hover { transform: scale(1.05); background: #ff4757; }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* =========================================
+   4. HOW IT WORKS SECTION (ส่วนที่หายไป กู้คืนแล้ว!)
+   ========================================= */
+.how-it-works-section { padding: 100px 20px; position: relative; z-index: 10; }
+.section-header { text-align: center; margin-bottom: 60px; }
+.section-header h2 { font-size: 3rem; font-weight: 600; margin-bottom: 15px; color: #1a1a1a; }
+.section-subtitle { color: #666; font-size: 1.1rem; font-weight: 300; }
+
+/* Cards Grid */
+.features-grid { display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; max-width: 1200px; margin: 0 auto; }
+.feature-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 24px; padding: 40px 30px; width: 300px; flex-grow: 1; max-width: 350px; transition: all 0.3s ease; position: relative; overflow: hidden; }
+.feature-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.08); border-color: transparent; }
+
+/* Icon Boxes inside cards */
+.icon-box { width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 25px; }
+.blue-icon { background-color: #e3f2fd; color: #2196f3; }
+.purple-icon { background-color: #f3e5f5; color: #9c27b0; }
+.green-icon { background-color: #e8f5e9; color: #4caf50; }
+
+.step-label { font-size: 0.8rem; font-weight: 600; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+.feature-card h3 { font-size: 1.4rem; font-weight: 600; margin-bottom: 15px; color: #1a1a1a; }
+.feature-card p { color: #666; line-height: 1.6; font-size: 0.95rem; }
+
+/* =========================================
+   5. ANALYSIS PAGE STYLES
+   ========================================= */
+.analysis-page { min-height: 100vh; padding-bottom: 50px; }
+.analysis-header-container { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 30px 20px; border-bottom: 1px solid #f0f0f0; max-width: 1200px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+
+.search-bar-wrapper { position: relative; width: 400px; }
+.search-input-top { width: 100%; padding: 15px 20px 15px 50px; border: 1px solid #e0e0e0; border-radius: 50px; outline: none; font-size: 0.95rem; color: #333; box-sizing: border-box; font-family: 'Prompt', sans-serif; }
+.search-input-top:focus { border-color: #000; }
+.search-bar-wrapper .search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #999; }
+.analyze-btn-small { background: #000; color: #fff; border: none; padding: 12px 30px; border-radius: 50px; cursor: pointer; font-weight: 600; transition: 0.2s; font-family: 'Prompt', sans-serif; }
+.analyze-btn-small:hover { transform: scale(1.05); background: #ff4757; }
+
+/* Toggle */
+.toggle-container { position: relative; display: flex; background-color: #f0f0f0; border-radius: 30px; padding: 4px; width: fit-content; cursor: pointer; }
+.toggle-slider { position: absolute; top: 4px; left: 4px; width: calc(50% - 4px); height: calc(100% - 8px); background-color: #000; border-radius: 25px; transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 0; }
+.toggle-container.youtube-active .toggle-slider { transform: translateX(100%); }
+.toggle-btn-slide { position: relative; z-index: 1; background: transparent; border: none; padding: 8px 24px; font-size: 14px; font-weight: 600; cursor: pointer; color: #666; transition: color 0.3s; display: flex; align-items: center; gap: 8px; font-family: 'Prompt', sans-serif; }
+.toggle-container.tiktok-active .btn-tiktok, .toggle-container.youtube-active .btn-youtube { color: #fff; }
+
+/* Analysis Content */
+.analysis-content { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+.title-section h1 { font-family: 'Prompt', sans-serif; font-size: 2.5rem; margin-bottom: 5px; }
+.title-section p { color: #777; margin-top: 5px; }
+.filter-toolbar { display: flex; justify-content: space-between; margin-top: 30px; margin-bottom: 20px; }
+.left-filters, .right-actions { display: flex; gap: 15px; }
+.filter-pill { background: #fff; border: 1px solid #e0e0e0; padding: 8px 20px; border-radius: 30px; cursor: pointer; color: #555; display: flex; align-items: center; gap: 8px; font-family: 'Prompt', sans-serif; }
+.action-text { background: none; border: none; cursor: pointer; font-weight: 500; color: #555; display: flex; align-items: center; gap: 5px; font-family: 'Prompt', sans-serif; }
+.export-btn { background: #000; color: #fff; border: none; padding: 8px 20px; border-radius: 30px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-family: 'Prompt', sans-serif; }
+
+/* Graph */
+.graph-container { position: relative; width: 100%; height: 600px; background-color: #fafafa; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; }
+.graph-container.fullscreen { position: fixed; top: 0; left: 0; width: 100vw !important; height: 100vh !important; z-index: 99999; background-color: #ffffff; border-radius: 0; border: none; animation: popupBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+@keyframes popupBounce { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+.fullscreen-btn { position: absolute; top: 20px; right: 20px; z-index: 100000; width: 45px; height: 45px; border-radius: 50%; border: 1px solid #ddd; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-size: 20px; color: #555; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.fullscreen-btn:hover { transform: scale(1.1); background: #f0f0f0; }
+.fullscreen-label { position: absolute; top: 25px; left: 30px; z-index: 100; font-size: 20px; font-weight: 600; color: #333; font-family: 'Prompt', sans-serif; }
+.graph-note-bottom { margin-top: 20px; text-align: center; color: #999; font-size: 0.85em; font-family: 'Prompt', sans-serif; border-top: 1px dashed #eee; padding-top: 15px; }
