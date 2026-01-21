@@ -29,7 +29,7 @@ export default function LoadingOverlay({ isLoading }) {
   useEffect(() => {
     if (isLoading) {
       setCurrentStep(1);
-      const timer1 = setTimeout(() => setCurrentStep(2), 2500);
+      const timer1 = setTimeout(() => setCurrentStep(2), 3000);
       const timer2 = setTimeout(() => setCurrentStep(3), 5500);
       return () => {
         clearTimeout(timer1);

@@ -1,24 +1,25 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom"; // 1. นำเข้า useNavigate
+import { useNavigate } from "react-router-dom"; 
+// 👇 1. เพิ่มบรรทัดนี้: Import LoadingOverlay เข้ามา (เช็ค Path ให้ถูกนะครับว่าไฟล์อยู่ที่ไหน)
+// สมมติว่าไฟล์ Search.js กับ LoadingOverlay.js อยู่ในโฟลเดอร์ components เหมือนกัน
+import LoadingOverlay from "./LoadingOverlay"; 
 
 function Search() {
     const [inputValue, setInputValue] = useState("");
     const [loading, setLoading] = useState(false);
-    const navigate = useNavigate(); // 2. ประกาศตัวแปร navigate
+    const navigate = useNavigate(); 
 
     const handleSearch = async () => {
         if (!inputValue) return alert("กรุณาพิมพ์คำค้นหาก่อนครับ");
 
-        setLoading(true);
+        setLoading(true); // 🟢 เริ่มหมุน Loading
         try {
-            // 3. ยิงไปที่ URL ให้ถูก (/api/search-tiktok)
             const response = await fetch('http://localhost:5000/api/search-tiktok', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // 4. เปลี่ยนชื่อตัวแปรเป็น 'keyword' ให้ตรงกับ Server
                 body: JSON.stringify({ 
                     keyword: inputValue,
-                    limit: 5 // ส่งจำนวนที่อยากได้ไปด้วย
+                    limit: 5 
                 }) 
             });
 
@@ -27,19 +28,21 @@ function Search() {
             const result = await response.json();
             console.log("ผลลัพธ์:", result);
             
-            // 5. ค้นหาเสร็จแล้ว เปลี่ยนไปหน้ากราฟทันที
             navigate('/analysis'); 
 
         } catch (error) {
             console.error("Error:", error);
             alert("เกิดข้อผิดพลาด หรือเครดิต Apify อาจหมด");
         } finally {
-            setLoading(false);
+            setLoading(false); // 🔴 หยุดหมุน (แต่จริงๆ พอ navigate ไปแล้วหน้านี้จะหายไปเอง)
         }
     };
 
     return (
         <div className="hero-section">
+            {/* 👇 2. เพิ่มบรรทัดนี้: วาง LoadingOverlay ไว้ตรงนี้ เพื่อให้มันลอยทับทุกอย่าง */}
+            <LoadingOverlay isLoading={loading} />
+
             <h1>
                 หาคนที่ <span className="highlight">#ถูกจริต & </span> <br />
                 เพื่อธุรกิจที่ <span className="highlight">ปังกว่า</span>
@@ -56,8 +59,9 @@ function Search() {
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
                 
+                {/* ปุ่มค้นหา (จะ disable ตอนโหลดเพื่อกันคนกดย้ำ) */}
                 <button className="analyze-btn" onClick={handleSearch} disabled={loading}>
-                    {loading ? "กำลังวิเคราะห์..." : "ค้นหา"}
+                    {loading ? "..." : "ค้นหา"}
                 </button>
             </div>
 
