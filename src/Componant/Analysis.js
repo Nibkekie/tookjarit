@@ -3,8 +3,6 @@ import ForceGraph2D from 'react-force-graph-2d';
 import * as d3 from 'd3';
 import { useNavigate } from 'react-router-dom';
 
-// Import CSS (ถ้ายังไม่ได้ import ใน index.js หรือ App.js ให้เปิดบรรทัดนี้)
-// import '../App.css'; 
 
 function Analysis() {
   const navigate = useNavigate();
