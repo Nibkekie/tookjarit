@@ -3,7 +3,6 @@ import './App.css';
 import '@flaticon/flaticon-uicons/css/all/all.css';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
-
 // 1. นำเข้าของสำหรับทำ Router
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
@@ -43,6 +42,7 @@ function App() {
         
       </div>
     </Router>
+    
   );
 }
 

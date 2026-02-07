@@ -1,60 +1,75 @@
-// imports
+// server.js (Fixed Version - แก้ปัญหา Avatar ไม่ขึ้น)
+require('dotenv').config();
 const express = require('express');
+const mongoose = require('mongoose');
+const Influencer = require('./Influencer');
 const { ApifyClient } = require('apify-client');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const Airtable = require('airtable');
-const cors = require('cors'); 
-require('dotenv').config();
+const cors = require('cors');
+const neo4j = require('neo4j-driver');
 
 const app = express();
-app.use(cors()); 
+app.use(cors());
 app.use(express.json());
 
-// --- 1. SETUP CLIENTS ---
+// --- Setup Clients ---
 const apifyClient = new ApifyClient({
     token: process.env.APIFY_API_TOKEN,
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 🔍 Debug: เช็ก Key
-if (!process.env.AIRTABLE_API_KEY2) console.error("❌ ไม่พบ AIRTABLE_API_KEY2 ใน .env");
+// Neo4j Connection
+const driver = neo4j.driver(
+    process.env.NEO4J_URI,
+    neo4j.auth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD)
+);
 
-// เชื่อม Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY2 }).base(process.env.AIRTABLE_BASE_ID2);
-// ⚠️ เช็กชื่อตารางให้ตรงกับใน Airtable
-const TABLE_NAME = 'TikTok_Raw_Data'; 
+// MongoDB Connection
+const connectDB = async () => {
+    try {
+        const uri = process.env.MONGO_URI || "mongodb+srv://tookjaritdev:113333555555@tookjarit-cluster.ve5cpue.mongodb.net/tookjarit?appName=TookJaRit-Cluster";
+        await mongoose.connect(uri);
+        console.log('✅ MongoDB Connected Successfully!');
+    } catch (err) {
+        console.error('❌ MongoDB Connection Failed:', err.message);
+        process.exit(1);
+    }
+};
+connectDB();
 
-// --- 2. API ENDPOINT ---
+// --- Helper Function ---
+const getDisplayBrand = (brand, productType) => {
+    if (!brand || ['Unknown', 'No Brand', 'No Brand Name'].includes(brand)) {
+        return productType || "General Product";
+    }
+    return brand;
+};
+
+// --- API 1: Search TikTok ---
 app.post('/api/search-tiktok', async (req, res) => {
-    const { keyword, limit = 10 } = req.body; 
+    const { keyword, limit = 10 } = req.body;
 
     if (!keyword) return res.status(400).json({ error: "Keyword is required" });
 
     console.log(`🔎 กำลังค้นหา TikTok: ${keyword} ...`);
 
     try {
-        // === STEP A: Apify ===
-        
-        let input; // สร้างตัวแปรมารอรับค่า
+        // Step A: Apify Scraping
+        let input;
 
-        // 🧠 Logic: เช็กว่ามี @ นำหน้าไหม?
         if (keyword.startsWith('@')) {
-            // 👉 ถ้ามี @ ให้เป็นโหมด "ค้นหา User" (Profile Mode)
-            const cleanUsername = keyword.replace('@', ''); // ตัด @ ออก
+            const cleanUsername = keyword.replace('@', '');
             console.log(`👤 ตรวจพบ User ID! กำลังดึงข้อมูลจากโปรไฟล์: ${cleanUsername}`);
-            
             input = {
-                "profiles": [cleanUsername],     // ใช้ profiles แทน hashtags
+                "profiles": [cleanUsername],
                 "resultsPerPage": limit,
                 "shouldDownloadCovers": false,
                 "shouldDownloadSlideshowImages": false,
                 "searchSection": ""
             };
         } else {
-            // 👉 ถ้าไม่มี @ ให้เป็นโหมด "ค้นหา Hashtag" ตามปกติ
             console.log(`Hashtag Mode: กำลังค้นหาแท็ก #${keyword}`);
-            
             input = {
                 "hashtags": [keyword.replace('#', '')],
                 "resultsPerPage": limit,
@@ -73,7 +88,7 @@ app.post('/api/search-tiktok', async (req, res) => {
 
         console.log(`✅ ได้ข้อมูลมา ${items.length} รายการ. ส่งต่อ AI...`);
 
-        // === STEP B: Gemini ===
+        // Step B: Gemini AI Analysis
         const dataForAI = items.map(item => ({
             id: item.id,
             text: item.text,
@@ -104,69 +119,199 @@ app.post('/api/search-tiktok', async (req, res) => {
         Structure: [{ "id": "...", "brand": "...", "product_type": "...", "main_category": "..." }]
         `;
 
-        // 🔴 ใช้ gemini-2.5-flash ตามที่คุณสั่งเท่านั้นครับ
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        
         const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const aiAnalysis = JSON.parse(cleanedJson);
+        const aiAnalysis = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
 
-        console.log("🤖 AI วิเคราะห์เสร็จแล้ว! กำลังเตรียมข้อมูลลง Airtable...");
+        console.log("🤖 AI วิเคราะห์เสร็จแล้ว! กำลังเตรียมข้อมูล...");
 
-        // === STEP C: จับคู่ข้อมูลลง Airtable (Mapping) ===
-        const recordsToCreate = items.map(tiktokItem => {
+        // Step C: Prepare Data
+        const processedData = items.map(tiktokItem => {
             const analysis = aiAnalysis.find(a => a.id === tiktokItem.id) || {};
-            
             return {
-                fields: {
-                    "Video ID": tiktokItem.id,
-                    "Brand": analysis.brand || "Unknown",
-                    "Product Type": analysis.product_type || "Unknown",
-                    "Main Category": analysis.main_category || "Lifestyle",
-                    "Caption": tiktokItem.text ? tiktokItem.text.substring(0, 5000) : "", 
-                    "Video URL": tiktokItem.webVideoUrl,
-                    "Views": tiktokItem.playCount || 0,
-                    "Author Name": tiktokItem.authorMeta?.name || "Unknown",
-                    
-                    // 👇👇👇 เพิ่มบรรทัดนี้เข้าไปครับ 👇👇👇
-                    "Followers": tiktokItem.authorMeta?.fans || 0,
-                    // 👆👆👆 เพิ่มบรรทัดนี้เข้าไปครับ 👆👆👆
-
-                    "Likes": tiktokItem.diggCount || 0,
-                    "Shares": tiktokItem.shareCount || 0,
-                    "Comments": tiktokItem.commentCount || 0
-                }
+                videoId: tiktokItem.id,
+                authorName: tiktokItem.authorMeta?.name || "Unknown",
+                authorAvatar: tiktokItem.authorMeta?.avatar || "",
+                followers: tiktokItem.authorMeta?.fans || 0,
+                platform: 'tiktok',
+                caption: tiktokItem.text || "",
+                videoUrl: tiktokItem.webVideoUrl || "",
+                totalViews: tiktokItem.playCount || 0,
+                totalLikes: tiktokItem.diggCount || 0,
+                totalComments: tiktokItem.commentCount || 0,
+                totalShares: tiktokItem.shareCount || 0,
+                brand: analysis.brand || "Unknown",
+                productType: analysis.product_type || "Unknown",
+                category: analysis.main_category || "Lifestyle"
             };
         });
 
-        // ตัดมาแค่ 10 รายการ
-        const chunk = recordsToCreate.slice(0, 10);
-
-        // 🟢🟢 [SHOW DATA] โชว์ข้อมูลใน Terminal ก่อนส่ง 🟢🟢
-        console.log("\n👇👇👇 ============ [DATA PREVIEW] ============ 👇👇👇");
-        console.log(JSON.stringify(chunk, null, 2)); 
-        console.log("👆👆👆 ========================================== 👆👆👆\n");
-
-        // === STEP D: ส่งขึ้น Airtable ===
-        if (chunk.length > 0) {
-            console.log(`🚀 กำลังส่ง ${chunk.length} รายการ ไปที่ Airtable...`);
-            await base(TABLE_NAME).create(chunk);
+        // Step D: Save to MongoDB
+        try {
+            await Influencer.insertMany(processedData, { ordered: false });
+            console.log("✅ [MongoDB] Saved new data.");
+        } catch (e) {
+            if (e.code !== 11000) console.error("MongoDB Error:", e);
         }
 
-        console.log("🎉 เสร็จสิ้น! บันทึกลง Airtable เรียบร้อย");
-        
-        res.json({ 
-            status: "success", 
-            message: `Saved ${chunk.length} items to Airtable`,
-            data: chunk.map(r => r.fields) 
-        });
+        // Step E: Update Neo4j (✅ แก้ไขตรงนี้)
+        const session = driver.session();
+        try {
+            await session.run(`
+                UNWIND $batch AS row
+                MERGE (i:Influencer {name: row.authorName})
+                ON CREATE SET 
+                    i.followers = row.followers, 
+                    i.authorAvatar = row.authorAvatar,
+                    i.platform = row.platform
+                ON MATCH SET 
+                    i.followers = row.followers,
+                    i.authorAvatar = row.authorAvatar,
+                    i.platform = row.platform
+                
+                MERGE (b:Brand {name: row.finalBrand})
+                ON CREATE SET b.category = row.category
+                ON MATCH SET b.category = row.category
 
+                MERGE (i)-[r:POSTED_ABOUT]->(b)
+                ON CREATE SET 
+                    r.weight = 1, 
+                    r.totalViews = row.totalViews, 
+                    r.totalLikes = row.totalLikes
+                ON MATCH SET 
+                    r.weight = r.weight + 1, 
+                    r.totalViews = COALESCE(r.totalViews, 0) + row.totalViews, 
+                    r.totalLikes = COALESCE(r.totalLikes, 0) + row.totalLikes
+            `, {
+                batch: processedData.map(d => ({
+                    authorName: d.authorName,
+                    authorAvatar: d.authorAvatar,
+                    followers: d.followers,
+                    platform: d.platform,
+                    totalViews: d.totalViews,
+                    totalLikes: d.totalLikes,
+                    finalBrand: getDisplayBrand(d.brand, d.productType),
+                    category: d.category
+                }))
+            });
+            console.log("✅ [Neo4j] Graph Updated with Avatar!");
+        } finally {
+            await session.close();
+        }
+
+        res.json({ status: "success", count: processedData.length, data: processedData });
     } catch (error) {
         console.error("❌ Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
+// --- API 2: Get Graph Data 
+app.get('/api/graph-data', async (req, res) => {
+    const session = driver.session();
+    try {
+        const result = await session.run(`
+            MATCH (i:Influencer)-[r:POSTED_ABOUT]->(b:Brand)
+            RETURN i, r, b LIMIT 1000
+        `);
+
+        const nodes = [], links = [], seen = new Set();
+        result.records.forEach(rec => {
+            const i = rec.get('i'), b = rec.get('b'), r = rec.get('r');
+
+            if (!seen.has(i.elementId)) {
+                nodes.push({
+                    id: i.elementId,
+                    name: i.properties.name,
+                    type: 'Influencer',
+                    followers: i.properties.followers,
+                    authorAvatar: i.properties.authorAvatar || "",  
+                    platform: i.properties.platform || 'tiktok'     
+                });
+                seen.add(i.elementId);
+            }
+
+            if (!seen.has(b.elementId)) {
+                nodes.push({
+                    id: b.elementId,
+                    name: b.properties.name,
+                    type: 'Brand',
+                    category: b.properties.category
+                });
+                seen.add(b.elementId);
+            }
+
+            links.push({
+                source: i.elementId,
+                target: b.elementId,
+                weight: r.properties.weight?.low || 1,
+                totalViews: r.properties.totalViews?.low || 0,
+                totalLikes: r.properties.totalLikes?.low || 0
+            });
+        });
+
+        res.json({ nodes, links });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    } finally {
+        await session.close();
+    }
+});
+
+app.get('/api/sync-mongo-to-neo4j', async (req, res) => {
+    try {
+        const influencers = await Influencer.find({});
+        console.log(`🔄 Syncing ${influencers.length} records from MongoDB...`);
+
+        const session = driver.session();
+        try {
+            await session.run(`
+                UNWIND $batch AS row
+                MERGE (i:Influencer {name: row.authorName})
+                ON CREATE SET 
+                    i.followers = row.followers, 
+                    i.authorAvatar = row.authorAvatar,
+                    i.platform = row.platform
+                ON MATCH SET 
+                    i.followers = row.followers,
+                    i.authorAvatar = row.authorAvatar,
+                    i.platform = row.platform
+                
+                MERGE (b:Brand {name: row.finalBrand})
+                ON CREATE SET b.category = row.category
+                ON MATCH SET b.category = row.category
+
+                MERGE (i)-[r:POSTED_ABOUT]->(b)
+                ON CREATE SET 
+                    r.weight = 1, 
+                    r.totalViews = row.totalViews, 
+                    r.totalLikes = row.totalLikes
+                ON MATCH SET 
+                    r.weight = r.weight + 1, 
+                    r.totalViews = COALESCE(r.totalViews, 0) + row.totalViews, 
+                    r.totalLikes = COALESCE(r.totalLikes, 0) + row.totalLikes
+            `, {
+                batch: influencers.map(inf => ({
+                    authorName: inf.authorName,
+                    authorAvatar: inf.authorAvatar || "",
+                    followers: inf.followers || 0,
+                    platform: inf.platform || 'tiktok',
+                    totalViews: inf.totalViews || 0,
+                    totalLikes: inf.totalLikes || 0,
+                    finalBrand: getDisplayBrand(inf.brand, inf.productType),
+                    category: inf.category
+                }))
+            });
+            console.log("✅ [Neo4j] Sync completed with Avatar!");
+            res.json({ status: "success", count: influencers.length });
+        } finally {
+            await session.close();
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- Start Server ---
 const PORT = 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

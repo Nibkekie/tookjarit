@@ -74,7 +74,7 @@ h1 { font-family: 'Prompt', sans-serif; font-size: 5rem; font-weight: 600; line-
 .analysis-page { min-height: 100vh; padding-bottom: 50px; }
 .analysis-header-container { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 30px 20px; border-bottom: 1px solid #f0f0f0; max-width: 1200px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 
-.search-bar-wrapper { position: relative; width: 400px; }
+.search-bar-wrapper { position: relative; width: 750px; }
 .search-input-top { width: 100%; padding: 15px 20px 15px 50px; border: 1px solid #e0e0e0; border-radius: 50px; outline: none; font-size: 0.95rem; color: #333; box-sizing: border-box; font-family: 'Prompt', sans-serif; }
 .search-input-top:focus { border-color: #000; }
 .search-bar-wrapper .search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #999; }
@@ -108,3 +108,202 @@ h1 { font-family: 'Prompt', sans-serif; font-size: 5rem; font-weight: 600; line-
 .fullscreen-btn:hover { transform: scale(1.1); background: #f0f0f0; }
 .fullscreen-label { position: absolute; top: 25px; left: 30px; z-index: 100; font-size: 20px; font-weight: 600; color: #333; font-family: 'Prompt', sans-serif; }
 .graph-note-bottom { margin-top: 20px; text-align: center; color: #999; font-size: 0.85em; font-family: 'Prompt', sans-serif; border-top: 1px dashed #eee; padding-top: 15px; }
+
+/* =========================================
+   6. UI COMPONENTS (NEW ADDITIONS)
+   ========================================= */
+
+/* --- Custom Dropdown --- */
+.custom-dropdown-container {
+  position: relative;
+  min-width: 220px;
+  font-family: 'Prompt', sans-serif;
+}
+
+.dropdown-trigger {
+  padding: 10px 20px;
+  border-radius: 30px;
+  border: 1px solid #e0e0e0;
+  background-color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.dropdown-trigger:hover {
+  border-color: #ccc;
+}
+
+.dropdown-trigger.active {
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 110%;
+  left: 0;
+  width: 100%;
+  background-color: #fff;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  padding: 8px;
+  z-index: 1000;
+  border: 1px solid #f0f0f0;
+  animation: fadeInUp 0.2s ease-out;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  padding: 10px 15px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  transition: background 0.2s;
+  color: #555;
+}
+
+.dropdown-item:hover {
+  background-color: #f9f9f9;
+  color: #000;
+}
+
+.dropdown-item.selected {
+  background-color: #fff0f2;
+  color: #ff4757;
+  font-weight: 600;
+}
+
+/* --- Node Popup Card --- */
+.node-popup-card {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 280px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 25px 20px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  z-index: 10000; /* ต้องสูงกว่าอย่างอื่น */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid #fff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.popup-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #ccc;
+  transition: color 0.2s;
+}
+
+.popup-close-btn:hover {
+  color: #333;
+}
+
+.popup-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.popup-name {
+  margin: 0 0 5px 0;
+  font-size: 18px;
+  color: #333;
+  line-height: 1.2;
+}
+
+.popup-type-badge {
+  font-size: 11px;
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.popup-divider {
+  width: 100%;
+  height: 1px;
+  background: #eee;
+  margin: 5px 0;
+}
+
+.popup-stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.popup-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #555;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.popup-stat-value {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+.popup-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  background: #000;
+  color: #fff;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  transition: transform 0.2s;
+  box-sizing: border-box;
+}
+
+.popup-view-btn:hover {
+  transform: scale(1.03);
+  background-color: #ff4757;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn { 
+  from { opacity: 0; transform: translateY(-10px); } 
+  to { opacity: 1; transform: translateY(0); } 
+}
