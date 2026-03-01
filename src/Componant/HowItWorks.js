@@ -1,52 +1,99 @@
+// Componant/HowItWorks.js
 import React from 'react';
 
+const STEPS = [
+    {
+        icon: '🔎',
+        step: '1',
+        title: 'ค้นหา',
+        desc: 'พิมพ์ #hashtag หรือ @username บน TikTok หรือ YouTube ที่สนใจ',
+    },
+    {
+        icon: '🕸️',
+        step: '2',
+        title: 'วิเคราะห์กราฟ',
+        desc: 'ดูเครือข่ายความสัมพันธ์ระหว่าง Influencer กับแบรนด์แบบ visual',
+    },
+    {
+        icon: '⭐',
+        step: '3',
+        title: 'บันทึก Favorite',
+        desc: 'กด ⭐ เพื่อบันทึกอินฟูที่ถูกใจไว้ ดูได้ทุกเมื่อในหน้า Favorites',
+    },
+];
+
 function HowItWorks() {
-  return (
-    <div className="how-it-works-section">
-      {/* ส่วนหัวข้อ */}
-      <div className="section-header" data-aos="fade-up">
-        <h2>อะไรคือ <span className="highlight">#ถูกจริต ??</span></h2>
-        <p className="section-subtitle">
-          ในวันที่โลกไม่เคยหยุดนิ่ง ธุรกิจต้องวิ่งให้ทัน #ถูกจริต พร้อมเชื่อมต่อแบรนด์ของคุณสู่โอกาสใหม่ ให้ 'ธุรกิจของคุณ' เติบโตได้ไกลระดับโลก
-        </p>
-      </div>
+    return (
+        <section style={styles.section}>
+            <h2 style={styles.title}>ใช้งานยังไง? 🤔</h2>
+            <p style={styles.sub}>3 ขั้นตอนง่ายๆ ก็เจออินฟูในดวงใจแล้ว</p>
 
-      {/* ส่วนการ์ด 3 ใบ */}
-      <div className="features-grid">
-        
-        {/* Card 1 */}
-        <div className="feature-card" data-aos="fade-up" data-aos-delay="100">
-          <div className="icon-box blue-icon">
-            <i className="fi fi-br-search"></i>
-          </div>
-          <div className="step-label">Step 01</div>
-          <h3>Search & Match</h3>
-          <p>พิมพ์คีย์เวิร์ดสินค้าหรือสไตล์ที่คุณหา ระบบ AI จะคัดกรอง Influencer ที่ "ถูกจริต" กับแบรนด์ของคุณมาให้ทันที</p>
-        </div>
+            <div style={styles.grid}>
+                {STEPS.map((s) => (
+                    <div key={s.step} style={styles.card} data-step={s.step}>
+                        {/* Big number watermark */}
+                        <div style={styles.watermark}>{s.step}</div>
 
-        {/* Card 2 */}
-        <div className="feature-card" data-aos="fade-up" data-aos-delay="200">
-          <div className="icon-box purple-icon">
-            <i className="fi fi-br-network-cloud"></i> {/* เปลี่ยนไอคอนเป็นกราฟ/เครือข่าย */}
-          </div>
-          <div className="step-label">Step 02</div>
-          <h3>Analyze The Graph</h3>
-          <p>ดูความถนัดผ่าน Graph Visualization <b>"ยิ่งเส้นกราฟหนา ยิ่งเชี่ยวชาญ"</b> ช่วยให้คุณตัดสินใจเลือกคนที่มีอิทธิพลต่อลูกค้าจริง</p>
-        </div>
-
-        {/* Card 3 */}
-        <div className="feature-card" data-aos="fade-up" data-aos-delay="300">
-          <div className="icon-box green-icon">
-            <i className="fi fi-br-paper-plane"></i> {/* เปลี่ยนไอคอนเป็นส่งข้อความ/จรวด */}
-          </div>
-          <div className="step-label">Step 03</div>
-          <h3>Connect & Grow</h3>
-          <p>เจอคนที่ใช่แล้ว? กดดู Contact เพื่อติดต่องาน หรือโพสต์แคมเปญของคุณเพื่อให้ Influencer เข้ามาสมัครได้เลย</p>
-        </div>
-
-      </div>
-    </div>
-  );
+                        <div style={styles.icon}>{s.icon}</div>
+                        <h3 style={styles.cardTitle}>{s.title}</h3>
+                        <p style={styles.cardDesc}>{s.desc}</p>
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
 }
+
+const styles = {
+    section: {
+        padding: '60px 32px 80px',
+        maxWidth: 1000,
+        margin: '0 auto',
+        fontFamily: "'Prompt', sans-serif",
+    },
+    title: {
+        fontSize: '1.8rem', fontWeight: 700,
+        textAlign: 'center', color: '#1f2937',
+        margin: '0 0 8px',
+    },
+    sub: {
+        textAlign: 'center', color: '#9ca3af',
+        fontSize: 15, margin: '0 0 48px',
+    },
+    grid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 24,
+    },
+    card: {
+        background: '#fff',
+        borderRadius: 20,
+        padding: '32px 24px',
+        textAlign: 'center',
+        border: '1.5px solid #e5e7eb',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        position: 'relative',
+        overflow: 'hidden',
+        transition: 'transform 0.2s, box-shadow 0.2s',
+    },
+    watermark: {
+        position: 'absolute',
+        top: -10, right: 12,
+        fontSize: '5rem', fontWeight: 700,
+        color: '#f3f4f6', lineHeight: 1,
+        fontFamily: "'Prompt', sans-serif",
+        userSelect: 'none',
+        pointerEvents: 'none',
+    },
+    icon: { fontSize: '2.5rem', marginBottom: 16 },
+    cardTitle: {
+        fontSize: '1rem', fontWeight: 700,
+        color: '#1f2937', margin: '0 0 8px',
+    },
+    cardDesc: {
+        fontSize: 13, color: '#9ca3af',
+        lineHeight: 1.6, margin: 0,
+    },
+};
 
 export default HowItWorks;
