@@ -254,5 +254,172 @@ app.get('/api/avatar/:name', async (req, res) => {
     } catch (e) { res.status(500).json({ avatar: null }); }
 });
 
+// ─────────────────────────────────────────
+// API: Export to Excel (TikTok + YouTube — แยก Sheet)
+// ─────────────────────────────────────────
+// Dependencies ที่ต้องติดตั้งก่อน: npm install exceljs
+// วาง code ชุดนี้ใน server.js ก่อน app.listen(...)
+
+app.get('/api/export-excel', async (req, res) => {
+    const ExcelJS = require('exceljs');
+
+    try {
+        // ── ดึงข้อมูลจาก MongoDB ทั้ง 2 platform ──
+        const [tiktokData, youtubeData] = await Promise.all([
+            Influencer.find({ platform: 'tiktok' }).lean(),
+            Influencer.find({ platform: 'youtube' }).lean(),
+        ]);
+
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'TookJaRit';
+        workbook.created = new Date();
+
+        // ── Header สไตล์ ──
+        const HEADER_FILL = {
+            type: 'pattern', pattern: 'solid',
+            fgColor: { argb: 'FF2D3436' },
+        };
+        const HEADER_FONT = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+        const TIKTOK_ACCENT  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF010101' } }; // TikTok black
+        const YOUTUBE_ACCENT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } }; // YouTube red
+        const BORDER_THIN = {
+            top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+            left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+            bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+            right: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+        };
+
+        const COLUMNS = [
+            { header: 'Author Name',     key: 'authorName',    width: 22 },
+            { header: 'Followers',       key: 'followers',     width: 14 },
+            { header: 'Brand',           key: 'brand',         width: 22 },
+            { header: 'Product Type',    key: 'productType',   width: 24 },
+            { header: 'Category',        key: 'category',      width: 20 },
+            { header: 'Caption',         key: 'caption',       width: 50 },
+            { header: 'Total Views',     key: 'totalViews',    width: 14 },
+            { header: 'Total Likes',     key: 'totalLikes',    width: 14 },
+            { header: 'Total Comments',  key: 'totalComments', width: 16 },
+            { header: 'Total Shares',    key: 'totalShares',   width: 14 },
+            { header: 'Video URL',       key: 'videoUrl',      width: 40 },
+            { header: 'Avatar URL',      key: 'authorAvatar',  width: 40 },
+            { header: 'Platform',        key: 'platform',      width: 12 },
+        ];
+
+        // ── ฟังก์ชันสร้าง Sheet ──
+        const buildSheet = (name, data, accentFill) => {
+            const sheet = workbook.addWorksheet(name, {
+                views: [{ state: 'frozen', ySplit: 2 }],
+                properties: { defaultRowHeight: 18 },
+            });
+
+            // Row 1: Title bar
+            sheet.mergeCells(1, 1, 1, COLUMNS.length);
+            const titleCell = sheet.getCell('A1');
+            titleCell.value = `TookJaRit — ${name} Influencer Data  |  Exported: ${new Date().toLocaleString('th-TH')}`;
+            titleCell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+            titleCell.fill = accentFill;
+            titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            sheet.getRow(1).height = 28;
+
+            // Row 2: Column headers
+            sheet.columns = COLUMNS;
+            const headerRow = sheet.getRow(2);
+            headerRow.values = COLUMNS.map(c => c.header);
+            headerRow.eachCell(cell => {
+                cell.font = HEADER_FONT;
+                cell.fill = HEADER_FILL;
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: false };
+                cell.border = BORDER_THIN;
+            });
+            headerRow.height = 22;
+
+            // Rows 3+: Data
+            data.forEach((row, idx) => {
+                const r = sheet.addRow({
+                    authorName:   row.authorName    || '',
+                    followers:    row.followers     || 0,
+                    brand:        row.brand         || '',
+                    productType:  row.productType   || '',
+                    category:     row.category      || '',
+                    caption:      row.caption       || '',
+                    totalViews:   row.totalViews    || 0,
+                    totalLikes:   row.totalLikes    || 0,
+                    totalComments:row.totalComments || 0,
+                    totalShares:  row.totalShares   || 0,
+                    videoUrl:     row.videoUrl      || '',
+                    authorAvatar: row.authorAvatar  || '',
+                    platform:     row.platform      || '',
+                });
+
+                // สลับสี row
+                const rowFill = idx % 2 === 0
+                    ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } }
+                    : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+
+                r.eachCell({ includeEmpty: true }, cell => {
+                    cell.fill   = rowFill;
+                    cell.border = BORDER_THIN;
+                    cell.font   = { name: 'Arial', size: 10 };
+                    cell.alignment = { vertical: 'middle', wrapText: false };
+                });
+
+                // จัดตัวเลขให้ชิดขวา + format comma
+                ['followers', 'totalViews', 'totalLikes', 'totalComments', 'totalShares'].forEach(key => {
+                    const col = COLUMNS.findIndex(c => c.key === key) + 1;
+                    const cell = r.getCell(col);
+                    cell.numFmt = '#,##0';
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                });
+
+                r.height = 18;
+            });
+
+            // Summary row
+            const lastDataRow = data.length + 2; // +2 เพราะมี title + header
+            const summaryRow = sheet.addRow({});
+            summaryRow.height = 20;
+
+            const summaryFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+            summaryRow.eachCell({ includeEmpty: true }, cell => {
+                cell.fill = summaryFill;
+                cell.border = BORDER_THIN;
+            });
+
+            // Total label
+            const labelCell = summaryRow.getCell(1);
+            labelCell.value = `รวมทั้งหมด: ${data.length} รายการ`;
+            labelCell.font = { name: 'Arial', bold: true, size: 10, color: { argb: 'FF2D3436' } };
+            labelCell.alignment = { horizontal: 'left', vertical: 'middle' };
+
+            // SUM formulas for numeric cols
+            const numericCols = { followers: 2, totalViews: 7, totalLikes: 8, totalComments: 9, totalShares: 10 };
+            Object.entries(numericCols).forEach(([, colIdx]) => {
+                const cell = summaryRow.getCell(colIdx);
+                cell.value = { formula: `SUM(${String.fromCharCode(64 + colIdx)}3:${String.fromCharCode(64 + colIdx)}${lastDataRow})` };
+                cell.numFmt = '#,##0';
+                cell.font = { name: 'Arial', bold: true, size: 10 };
+                cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            });
+
+            // Auto-filter บน header row
+            sheet.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: COLUMNS.length } };
+        };
+
+        buildSheet('TikTok',  tiktokData,  TIKTOK_ACCENT);
+        buildSheet('YouTube', youtubeData, YOUTUBE_ACCENT);
+
+        // ── Stream response ──
+        const filename = `TookJaRit_Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (e) {
+        console.error('❌ Export Excel Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 const PORT = 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

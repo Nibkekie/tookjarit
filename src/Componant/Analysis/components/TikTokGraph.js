@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { CATEGORY_COLOR_MAP } from '../constants/categories';
 import { useAvatarCache } from '../hooks/useAvatarCache';
 import NodePopupCard from './NodePopupCard';
+import ExportButton from '../components/ExportButton';
 
 function getNodeColor(node) {
     if (node.type === 'Influencer') return '#2d3436';

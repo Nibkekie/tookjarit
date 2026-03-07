@@ -1,4 +1,5 @@
 import React from 'react';
+import ExportButton from '../components/ExportButton';
 
 function FilterToolbar({ localFilter, setLocalFilter, onRefresh, onSync }) {
     return (
@@ -22,6 +23,7 @@ function FilterToolbar({ localFilter, setLocalFilter, onRefresh, onSync }) {
                 <button className="action-text" onClick={onRefresh}>
                     <i className="fi fi-rr-refresh"></i> รีเฟรช
                 </button>
+                <ExportButton />
             </div>
         </div>
     );

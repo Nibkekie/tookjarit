@@ -6,6 +6,8 @@ import * as d3 from 'd3';
 import './Analysis.css';
 import LoadingOverlay from '../LoadingOverlay';
 import { CATEGORIES, CATEGORY_COLOR_MAP } from './constants/categories';
+// เพิ่มบรรทัดนี้ต่อจาก import อื่นๆ
+import ExportButton from './components/ExportButton';
 
 const API = 'http://localhost:5000';
 
@@ -455,6 +457,7 @@ function Analysis({ platform }) {
                         <button className="action-text" onClick={() => { loadGraphData(); setLocalFilter(''); setSelectedCategory(''); }}>
                             <i className="fi fi-rr-refresh"></i> รีเฟรช
                         </button>
+                        <ExportButton />
                     </div>
                 </div>
 
