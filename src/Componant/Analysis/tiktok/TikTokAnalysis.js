@@ -15,7 +15,7 @@ import { CATEGORIES, CATEGORY_COLOR_MAP } from '../constants/categories';
 const API = 'http://localhost:5000';
 const PLATFORM_COLOR = '#1a1a2e';
 
-// ─── Node Helpers ────────────────────────────────────────────────────────────
+// ─── Node Helpers ─────────────────────────────────────────────────────────────
 function getNodeColor(node) {
     if (node.type === 'Influencer') return '#2d3436';
     return CATEGORY_COLOR_MAP[node.category] || '#BDC3C7';
@@ -25,11 +25,38 @@ function getNodeSize(node) {
     if (!node.followers) return 25;
     return Math.min(Math.max(Math.log(node.followers) * 4 + 10, 25), 80);
 }
-function getLinkWidth(link) {
-    if (link.isPhantom) return 0;
-    const score = (link.totalViews || 0) + (link.totalLikes || 0) + ((link.source?.followers || 0) * 0.5);
-    return 2 + (Math.min(score, 500000) / 500000) * 10;
+
+// ─── Raw Score (Weighted Engagement) ─────────────────────────────────────────
+function calcRawScore(link) {
+    return (
+        (link.totalViews    || 0) * 0.1 +
+        (link.totalLikes    || 0) * 0.4 +
+        (link.totalComments || 0) * 0.3 +
+        (link.totalShares   || 0) * 0.2
+    );
 }
+
+// ─── Per-Brand Normalized Rating /10 ─────────────────────────────────────────
+// Compare only within the same brand — fair regardless of search frequency
+// Best influencer for THIS brand = 10.0, others scale relatively
+function calcRating(link, allLinks) {
+    const brandId = typeof link.target === 'object' ? link.target.id : link.target;
+    const sameBrand = allLinks.filter(l => {
+        if (l.isPhantom) return false;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return t === brandId;
+    });
+    const maxRaw = Math.max(...sameBrand.map(calcRawScore), 1);
+    return (calcRawScore(link) / maxRaw) * 10;
+}
+
+// ─── Link Width (based on raw score, global scale) ───────────────────────────
+function getLinkWidth(link, allLinks) {
+    if (link.isPhantom) return 0;
+    const rating = calcRating(link, allLinks);  // 0-10
+    return 1.5 + (rating / 10) * 10;  // min 1.5px, max 11.5px
+}
+
 function fmtNum(n) {
     if (!n || n === 0) return '-';
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -37,22 +64,6 @@ function fmtNum(n) {
     return n.toLocaleString();
 }
 
-// ─── คำนวณ stats จาก links ───────────────────────────────────────────────────
-// totalLikes / totalViews อยู่ใน relationship (link) ไม่ใช่ node
-function calcNodeStats(node, links) {
-    const myLinks = links.filter(l => {
-        if (l.isPhantom) return false;
-        const s = typeof l.source === 'object' ? l.source.id : l.source;
-        const t = typeof l.target === 'object' ? l.target.id : l.target;
-        return s === node.id || t === node.id;
-    });
-    const totalLikes = myLinks.reduce((sum, l) => sum + (l.totalLikes || 0), 0);
-    const brandCount = myLinks.length;
-    const engRate    = node.followers && totalLikes
-        ? ((totalLikes / node.followers) * 100).toFixed(2) + '%'
-        : '-';
-    return { totalLikes, brandCount, engRate };
-}
 function getTier(followers) {
     if (!followers) return { label: 'Unknown', color: '#b2bec3' };
     if (followers >= 1_000_000) return { label: '👑 Mega',     color: '#6c5ce7' };
@@ -60,20 +71,24 @@ function getTier(followers) {
     if (followers >= 50_000)    return { label: '⚡ Mid-Tier', color: '#f39c12' };
     if (followers >= 10_000)    return { label: '✨ Micro',    color: '#00b894' };
     if (followers >= 1_000)     return { label: '🌱 Nano',     color: '#74b9ff' };
-    return { label: '🔰 New',  color: '#b2bec3' };
+    return { label: '🔰 New',   color: '#b2bec3' };
 }
-// ─── Tooltip Component ────────────────────────────────────────────────────────
-function NodeTooltip({ node, pos, links }) {
-    if (!node || node.type !== 'Influencer' || !pos) return null;
-    const { totalLikes, brandCount, engRate } = calcNodeStats(node, links);
 
-    const tier = getTier(node.followers);
-const rows = [
-    { icon: '👥', label: 'Followers',    value: fmtNum(node.followers) },
-    { icon: '❤️',  label: 'Total Likes', value: fmtNum(totalLikes) },
-    { icon: '🏷️', label: 'Brands',       value: brandCount || '-' },
-    { icon: tier.color ? '🎖️' : '📊', label: 'Tier', value: tier.label },
-];
+// ─── Link Tooltip ─────────────────────────────────────────────────────────────
+// Always visible on link hover regardless of selected node/filter/category
+function LinkTooltip({ link, pos, allLinks }) {
+    if (!link || !pos) return null;
+
+    const followers = typeof link.source === 'object' ? link.source.followers : 0;
+    const tier      = getTier(followers);
+    const rating    = calcRating(link, allLinks);
+    const brandName = typeof link.target === 'object' ? link.target.name : link.target;
+    const infName   = typeof link.source === 'object' ? link.source.name : link.source;
+    const engage    = (link.totalLikes || 0) + (link.totalComments || 0);
+
+    const ratingColor = rating >= 7.5 ? '#00b894'
+        : rating >= 5 ? '#f39c12'
+        : '#e17055';
 
     return (
         <div style={{
@@ -85,27 +100,54 @@ const rows = [
             border:        '1px solid rgba(255,255,255,0.12)',
             borderRadius:  14,
             padding:       '10px 14px',
-            minWidth:      165,
+            minWidth:      175,
             pointerEvents: 'none',
-            zIndex:        9999,
+            zIndex:        99999,
             boxShadow:     '0 8px 32px rgba(0,0,0,0.35)',
             fontFamily:    "'Prompt', sans-serif",
             animation:     'tooltipIn 0.15s ease',
         }}>
+            {/* Header */}
             <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8, whiteSpace: 'nowrap' }}>
-                @{node.name}
+                @{infName}
             </div>
-            {rows.map(r => (
-                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{r.icon} {r.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{r.value}</span>
-                </div>
-            ))}
+
+            {/* Brand */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>🛍️ Brand</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{brandName}</span>
+            </div>
+
+            {/* Rating — colored, per-brand comparison */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>⭐ Rating</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: ratingColor }}>
+                    {rating.toFixed(1)} / 10
+                </span>
+            </div>
+
+            {/* Views */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>👁️ Views</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{fmtNum(link.totalViews)}</span>
+            </div>
+
+            {/* Engage */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>❤️ Engage</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{fmtNum(engage)}</span>
+            </div>
+
+            {/* Tier */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 0 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>🎖️ Tier</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: tier.color }}>{tier.label}</span>
+            </div>
         </div>
     );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 function TikTokAnalysis() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -117,18 +159,20 @@ function TikTokAnalysis() {
     const { highlightNodes, highlightLinks, hoverNode, setHoverNode, updateHighlights, clearHighlights } = useHighlight(data.links);
     const { imgCache, loadAvatarForNode } = useAvatarCache(fgRef);
 
-    const [dimensions, setDimensions]     = useState({ width: 800, height: 600 });
-    const [isFullScreen, setIsFullScreen] = useState(false);
-    const [selectedNode, setSelectedNode] = useState(null);
-    const [globalSearch, setGlobalSearch] = useState('');
-    const [localFilter, setLocalFilter]   = useState('');
+    const [dimensions, setDimensions]             = useState({ width: 800, height: 600 });
+    const [isFullScreen, setIsFullScreen]         = useState(false);
+    const [selectedNode, setSelectedNode]         = useState(null);
+    const [globalSearch, setGlobalSearch]         = useState('');
+    const [localFilter, setLocalFilter]           = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
-    const [tooltipPos, setTooltipPos]     = useState(null);
+
+    const [hoverLink, setHoverLink]           = useState(null);
+    const [linkTooltipPos, setLinkTooltipPos] = useState(null);
 
     const [favorites, setFavorites]   = useState(new Set());
     const [favLoading, setFavLoading] = useState(false);
 
-    const [konamiProgress, setKonamiProgress] = useState(0);
+    const [konamiProgress, setKonamiProgress]   = useState(0);
     const [easterEggActive, setEasterEggActive] = useState(false);
     const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
 
@@ -250,35 +294,47 @@ function TikTokAnalysis() {
         }
     }, [localFilter, data.nodes]);
 
-    // ── Hover ─────────────────────────────────────────────────────────────────
+    // ── Hover Node — ไม่มี NodeTooltip แล้ว แค่ highlight ─────────────────────
     const handleNodeHover = useCallback((node, prevNode, event) => {
         if (selectedNode || localFilter) return;
         setHoverNode(node || null);
         updateHighlights(node);
-        if (node?.type === 'Influencer' && event) {
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (rect) setTooltipPos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-        } else {
-            setTooltipPos(null);
-        }
+        // ซ่อน link tooltip เมื่อ hover node
+        setHoverLink(null);
+        setLinkTooltipPos(null);
     }, [selectedNode, localFilter, updateHighlights]);
 
+    // ── Hover Link — แสดง tooltip เสมอ ไม่ว่าจะเลือก filter/category อะไร ──
+    const handleLinkHover = useCallback((link, prevLink, event) => {
+        if (link && !link.isPhantom) {
+            setHoverLink(link);
+            if (event) {
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (rect) setLinkTooltipPos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+            }
+        } else {
+            setHoverLink(null);
+            setLinkTooltipPos(null);
+        }
+    }, []);
+
+    // ── Mouse Move — follow cursor ────────────────────────────────────────────
     useEffect(() => {
         const canvas = containerRef.current?.querySelector('canvas');
         if (!canvas) return;
         const onMove = (e) => {
-            if (!hoverNode || hoverNode.type !== 'Influencer') return;
+            if (!hoverLink) return;
             const rect = containerRef.current.getBoundingClientRect();
-            setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+            setLinkTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
         };
         canvas.addEventListener('mousemove', onMove);
         return () => canvas.removeEventListener('mousemove', onMove);
-    }, [hoverNode]);
+    }, [hoverLink]);
 
     const handleNodeClick = (node) => {
         const n = node === selectedNode ? null : node;
         setSelectedNode(n); setHoverNode(n); updateHighlights(n); setLocalFilter('');
-        setTooltipPos(null);
+        setHoverLink(null); setLinkTooltipPos(null);
         if (fgRef.current) {
             if (n) { fgRef.current.centerAt(node.x, node.y, 1000); fgRef.current.zoom(1.75, 1000); }
             else fgRef.current.zoomToFit(1000, 50);
@@ -286,7 +342,8 @@ function TikTokAnalysis() {
     };
     const handleBackgroundClick = () => {
         setSelectedNode(null); setLocalFilter('');
-        clearHighlights(); setTooltipPos(null);
+        clearHighlights();
+        setHoverLink(null); setLinkTooltipPos(null);
         if (fgRef.current) fgRef.current.zoomToFit(1000);
     };
 
@@ -441,8 +498,8 @@ function TikTokAnalysis() {
                                 {isFullScreen ? '✖️' : '⤢'}
                             </button>
 
-                            {/* ✅ ส่ง links แทน data ทั้งก้อน */}
-                            <NodeTooltip node={hoverNode} pos={tooltipPos} links={data.links} />
+                            {/* Link Tooltip — แสดงตลอดเมื่อ hover เส้น */}
+                            <LinkTooltip link={hoverLink} pos={linkTooltipPos} allLinks={data.links} />
 
                             <ForceGraph2D
                                 ref={fgRef}
@@ -456,7 +513,8 @@ function TikTokAnalysis() {
                                     if (selectedCategory) return (link.source?.category === selectedCategory || link.target?.category === selectedCategory) ? '#a5a5a5' : 'rgba(200,200,200,0.1)';
                                     return highlightLinks.has(link) ? '#333' : 'rgba(200,200,200,0.1)';
                                 }}
-                                linkWidth={link => highlightLinks.has(link) ? getLinkWidth(link) : (link.isPhantom ? 0 : 1.25)}
+                                linkWidth={link => link.isPhantom ? 0 : getLinkWidth(link, data.links)}
+                                linkHoverPrecision={8}
                                 nodeCanvasObject={paintNode}
                                 nodePointerAreaPaint={(node, color, ctx) => {
                                     ctx.fillStyle = color;
@@ -464,6 +522,7 @@ function TikTokAnalysis() {
                                 }}
                                 onNodeHover={handleNodeHover}
                                 onNodeClick={handleNodeClick}
+                                onLinkHover={(link, prevLink, event) => handleLinkHover(link, prevLink, event)}
                                 onBackgroundClick={handleBackgroundClick}
                             />
                         </div>

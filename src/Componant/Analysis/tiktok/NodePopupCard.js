@@ -77,23 +77,26 @@ function NodePopupCard({ node, imgCache, favorites, favLoading, onClose, onToggl
             ) : (
                 <>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', width: '100%' }}>
-                        <div className="popup-stat-box">
-                            <div className="popup-stat-label">
-                                <i className="fi fi-rr-users-alt" /> Followers
-                            </div>
-                            <span className="popup-stat-value">
-                                {node.followers?.toLocaleString() || '-'}
-                            </span>
-                        </div>
-                        <div className="popup-stat-box">
-                            <div className="popup-stat-label" style={{ color: '#ff4757' }}>
-                                <i className="fi fi-rr-heart" /> Video Likes
-                            </div>
-                            <span className="popup-stat-value">
-                                {fmtNum(node.totalLikes)}
-                            </span>
-                        </div>
-                    </div>
+    <div className="popup-stat-box">
+        <div className="popup-stat-label">
+            <i className="fi fi-rr-users-alt" /> Followers
+        </div>
+        <span className="popup-stat-value">
+            {node.followers?.toLocaleString() || '-'}
+        </span>
+    </div>
+    <div className="popup-stat-box">
+        <div className="popup-stat-label" style={{ color: '#ff4757' }}>
+            <i className="fi fi-rr-heart" /> Likes
+        </div>
+        <span className="popup-stat-value">
+            {node.profileLikes
+                ? fmtNum(node.profileLikes)
+                : <span style={{ fontSize: 11, color: '#bbb', fontWeight: 400 }}>ยังไม่ sync</span>
+            }
+        </span>
+    </div>
+</div>
 
                     <div style={{ width: '100%', marginTop: 10 }}>
                         <div style={{
