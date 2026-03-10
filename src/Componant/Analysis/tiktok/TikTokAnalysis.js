@@ -53,18 +53,27 @@ function calcNodeStats(node, links) {
         : '-';
     return { totalLikes, brandCount, engRate };
 }
-
+function getTier(followers) {
+    if (!followers) return { label: 'Unknown', color: '#b2bec3' };
+    if (followers >= 1_000_000) return { label: '👑 Mega',     color: '#6c5ce7' };
+    if (followers >= 100_000)   return { label: '🔥 Macro',    color: '#e17055' };
+    if (followers >= 50_000)    return { label: '⚡ Mid-Tier', color: '#f39c12' };
+    if (followers >= 10_000)    return { label: '✨ Micro',    color: '#00b894' };
+    if (followers >= 1_000)     return { label: '🌱 Nano',     color: '#74b9ff' };
+    return { label: '🔰 New',  color: '#b2bec3' };
+}
 // ─── Tooltip Component ────────────────────────────────────────────────────────
 function NodeTooltip({ node, pos, links }) {
     if (!node || node.type !== 'Influencer' || !pos) return null;
     const { totalLikes, brandCount, engRate } = calcNodeStats(node, links);
 
-    const rows = [
-        { icon: '👥', label: 'Followers',    value: fmtNum(node.followers) },
-        { icon: '❤️',  label: 'Total Likes', value: fmtNum(totalLikes) },
-        { icon: '🏷️', label: 'Brands',       value: brandCount || '-' },
-        { icon: '📊', label: 'Eng. Rate',    value: engRate },
-    ];
+    const tier = getTier(node.followers);
+const rows = [
+    { icon: '👥', label: 'Followers',    value: fmtNum(node.followers) },
+    { icon: '❤️',  label: 'Total Likes', value: fmtNum(totalLikes) },
+    { icon: '🏷️', label: 'Brands',       value: brandCount || '-' },
+    { icon: tier.color ? '🎖️' : '📊', label: 'Tier', value: tier.label },
+];
 
     return (
         <div style={{

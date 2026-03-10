@@ -1,8 +1,8 @@
 // Analysis/tiktok/NodePopupCard.js
-// Popup เฉพาะ TikTok: แสดง Followers, Likes, ปุ่ม Favorite, ลิงก์ TikTok profile
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CATEGORY_COLOR_MAP } from '../constants/categories';
 
+const API = 'http://localhost:5000';
 const PLATFORM_COLOR = '#1a1a2e';
 
 function getNodeColor(node) {
@@ -10,7 +10,30 @@ function getNodeColor(node) {
     return CATEGORY_COLOR_MAP[node.category] || '#BDC3C7';
 }
 
+function fmtNum(n) {
+    if (!n || n === 0) return '-';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
+    return n.toLocaleString();
+}
+
 function NodePopupCard({ node, imgCache, favorites, favLoading, onClose, onToggleFavorite }) {
+    const [brandVideos, setBrandVideos] = useState([]);
+    const [loadingBrands, setLoadingBrands] = useState(false);
+
+    useEffect(() => {
+        if (!node || node.type !== 'Influencer') {
+            setBrandVideos([]);
+            return;
+        }
+        setLoadingBrands(true);
+        fetch(`${API}/api/top-videos-by-brand?authorName=${encodeURIComponent(node.name)}&platform=tiktok`)
+            .then(r => r.json())
+            .then(data => setBrandVideos(Array.isArray(data) ? data : []))
+            .catch(() => setBrandVideos([]))
+            .finally(() => setLoadingBrands(false));
+    }, [node]);
+
     if (!node) return null;
     const color = getNodeColor(node);
 
@@ -18,7 +41,6 @@ function NodePopupCard({ node, imgCache, favorites, favLoading, onClose, onToggl
         <div className="node-popup-card" style={{ zIndex: 1000 }}>
             <button className="popup-close-btn" onClick={onClose}>✖</button>
 
-            {/* Avatar */}
             <div className="popup-avatar" style={{
                 background: color,
                 boxShadow: `0 4px 15px ${color}40`,
@@ -32,27 +54,28 @@ function NodePopupCard({ node, imgCache, favorites, favLoading, onClose, onToggl
                 }
             </div>
 
-            {/* Name + Badge */}
             <div>
                 <h3 className="popup-name">{node.name}</h3>
-                <span className="popup-type-badge" style={{ background: node.type === 'Influencer' ? PLATFORM_COLOR : '#888' }}>
+                <span className="popup-type-badge"
+                    style={{ background: node.type === 'Influencer' ? PLATFORM_COLOR : '#888' }}>
                     {node.type}
                 </span>
             </div>
 
             <div className="popup-divider" />
 
-            {/* Brand → แสดง category */}
             {node.type === 'Brand' ? (
                 <div style={{ marginBottom: '10px' }}>
                     <span style={{ display: 'block', fontSize: '12px', color: '#999', marginBottom: '4px' }}>Category</span>
-                    <span style={{ fontSize: '16px', fontWeight: 'bold', color, background: `${color}15`, padding: '6px 15px', borderRadius: '8px' }}>
+                    <span style={{
+                        fontSize: '16px', fontWeight: 'bold', color,
+                        background: `${color}15`, padding: '6px 15px', borderRadius: '8px'
+                    }}>
                         {node.category || '-'}
                     </span>
                 </div>
             ) : (
                 <>
-                    {/* Stats: Followers + Likes */}
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', width: '100%' }}>
                         <div className="popup-stat-box">
                             <div className="popup-stat-label">
@@ -64,15 +87,89 @@ function NodePopupCard({ node, imgCache, favorites, favLoading, onClose, onToggl
                         </div>
                         <div className="popup-stat-box">
                             <div className="popup-stat-label" style={{ color: '#ff4757' }}>
-                                <i className="fi fi-rr-heart" /> Likes
+                                <i className="fi fi-rr-heart" /> Video Likes
                             </div>
                             <span className="popup-stat-value">
-                                {node.totalLikes?.toLocaleString() || '-'}
+                                {fmtNum(node.totalLikes)}
                             </span>
                         </div>
                     </div>
 
-                    {/* Actions: View Profile + Favorite */}
+                    <div style={{ width: '100%', marginTop: 10 }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            fontSize: 12, fontWeight: 700, color: '#555',
+                            marginBottom: 8, fontFamily: "'Prompt', sans-serif",
+                        }}>
+                            <span>🏷️ แบรนด์ที่โปรโมท</span>
+                            <span style={{ color: '#bbb', fontWeight: 400 }}>· คลิปยอดไลค์สูงสุด</span>
+                        </div>
+
+                        {loadingBrands ? (
+                            <div style={{
+                                fontSize: 12, color: '#aaa', textAlign: 'center', padding: '10px 0',
+                                fontFamily: "'Prompt', sans-serif",
+                            }}>
+                                กำลังโหลดข้อมูลแบรนด์...
+                            </div>
+                        ) : brandVideos.length === 0 ? (
+                            <div style={{
+                                fontSize: 12, color: '#ccc', textAlign: 'center', padding: '8px 0',
+                                fontFamily: "'Prompt', sans-serif",
+                            }}>
+                                ไม่มีข้อมูลแบรนด์
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {brandVideos.map((item, idx) => (
+                                    <div key={idx} style={{
+                                        display: 'flex', alignItems: 'center',
+                                        justifyContent: 'space-between', gap: 8,
+                                        background: '#f8f9fa', borderRadius: 10,
+                                        padding: '7px 10px',
+                                        border: '1px solid #eee',
+                                    }}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{
+                                                fontSize: 12, fontWeight: 700, color: '#2d3436',
+                                                fontFamily: "'Prompt', sans-serif",
+                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                            }}>
+                                                {item.brand || item._id || 'Unknown'}
+                                            </div>
+                                            <div style={{ fontSize: 11, color: '#e74c3c', marginTop: 1 }}>
+                                                ❤️ {fmtNum(item.totalLikes)}
+                                            </div>
+                                        </div>
+
+                                        {item.videoUrl ? (
+                                            <a
+                                                href={item.videoUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                onClick={e => e.stopPropagation()}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                    padding: '5px 10px', borderRadius: 8,
+                                                    background: PLATFORM_COLOR, color: '#fff',
+                                                    fontSize: 11, fontWeight: 600, textDecoration: 'none',
+                                                    fontFamily: "'Prompt', sans-serif",
+                                                    whiteSpace: 'nowrap', flexShrink: 0,
+                                                }}
+                                            >
+                                                ▶ ดูคลิป
+                                            </a>
+                                        ) : (
+                                            <span style={{ fontSize: 11, color: '#ccc' }}>ไม่มีลิงก์</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="popup-divider" style={{ margin: '10px 0' }} />
+
                     <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                         <a
                             href={`https://www.tiktok.com/@${node.name}`}
