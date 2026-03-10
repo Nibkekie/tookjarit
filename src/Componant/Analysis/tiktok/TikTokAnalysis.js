@@ -1,5 +1,4 @@
 // Analysis/tiktok/TikTokAnalysis.js
-// Main page สำหรับ TikTok — ประกอบจาก hooks + components แยกส่วน
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ForceGraph2D from 'react-force-graph-2d';
@@ -9,16 +8,14 @@ import { useGraphData }   from './useGraphData';
 import { useHighlight }   from '../hooks/useHighlight';
 import { useAvatarCache } from '../hooks/useAvatarCache';
 import NodePopupCard      from './NodePopupCard';
-import CategoryLegend     from '../components/CategoryLegend';
 import FilterToolbar      from '../components/FilterToolbar';
-import ExportButton       from '../components/ExportButton';
 import LoadingOverlay     from '../../LoadingOverlay';
 import { CATEGORIES, CATEGORY_COLOR_MAP } from '../constants/categories';
 
 const API = 'http://localhost:5000';
 const PLATFORM_COLOR = '#1a1a2e';
 
-// ─── Node Helpers ───────────────────────────────────────────────────────────
+// ─── Node Helpers ────────────────────────────────────────────────────────────
 function getNodeColor(node) {
     if (node.type === 'Influencer') return '#2d3436';
     return CATEGORY_COLOR_MAP[node.category] || '#BDC3C7';
@@ -33,42 +30,101 @@ function getLinkWidth(link) {
     const score = (link.totalViews || 0) + (link.totalLikes || 0) + ((link.source?.followers || 0) * 0.5);
     return 2 + (Math.min(score, 500000) / 500000) * 10;
 }
+function fmtNum(n) {
+    if (!n || n === 0) return '-';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
+    return n.toLocaleString();
+}
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// ─── คำนวณ stats จาก links ───────────────────────────────────────────────────
+// totalLikes / totalViews อยู่ใน relationship (link) ไม่ใช่ node
+function calcNodeStats(node, links) {
+    const myLinks = links.filter(l => {
+        if (l.isPhantom) return false;
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return s === node.id || t === node.id;
+    });
+    const totalLikes = myLinks.reduce((sum, l) => sum + (l.totalLikes || 0), 0);
+    const brandCount = myLinks.length;
+    const engRate    = node.followers && totalLikes
+        ? ((totalLikes / node.followers) * 100).toFixed(2) + '%'
+        : '-';
+    return { totalLikes, brandCount, engRate };
+}
+
+// ─── Tooltip Component ────────────────────────────────────────────────────────
+function NodeTooltip({ node, pos, links }) {
+    if (!node || node.type !== 'Influencer' || !pos) return null;
+    const { totalLikes, brandCount, engRate } = calcNodeStats(node, links);
+
+    const rows = [
+        { icon: '👥', label: 'Followers',    value: fmtNum(node.followers) },
+        { icon: '❤️',  label: 'Total Likes', value: fmtNum(totalLikes) },
+        { icon: '🏷️', label: 'Brands',       value: brandCount || '-' },
+        { icon: '📊', label: 'Eng. Rate',    value: engRate },
+    ];
+
+    return (
+        <div style={{
+            position:      'absolute',
+            left:          pos.x + 16,
+            top:           pos.y - 10,
+            background:    'rgba(15,15,25,0.92)',
+            backdropFilter:'blur(8px)',
+            border:        '1px solid rgba(255,255,255,0.12)',
+            borderRadius:  14,
+            padding:       '10px 14px',
+            minWidth:      165,
+            pointerEvents: 'none',
+            zIndex:        9999,
+            boxShadow:     '0 8px 32px rgba(0,0,0,0.35)',
+            fontFamily:    "'Prompt', sans-serif",
+            animation:     'tooltipIn 0.15s ease',
+        }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8, whiteSpace: 'nowrap' }}>
+                @{node.name}
+            </div>
+            {rows.map(r => (
+                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{r.icon} {r.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{r.value}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 function TikTokAnalysis() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Refs
     const fgRef        = useRef();
     const containerRef = useRef();
 
-    // Hooks
-    const { data, isLoading, loadGraphData, searchTikTok, syncDB } = useGraphData();
+    const { data, isLoading, loadGraphData, searchTikTok } = useGraphData();
     const { highlightNodes, highlightLinks, hoverNode, setHoverNode, updateHighlights, clearHighlights } = useHighlight(data.links);
     const { imgCache, loadAvatarForNode } = useAvatarCache(fgRef);
 
-    // UI State
-    const [dimensions, setDimensions]       = useState({ width: 800, height: 600 });
-    const [isFullScreen, setIsFullScreen]   = useState(false);
-    const [selectedNode, setSelectedNode]   = useState(null);
-    const [globalSearch, setGlobalSearch]   = useState('');
-    const [localFilter, setLocalFilter]     = useState('');
+    const [dimensions, setDimensions]     = useState({ width: 800, height: 600 });
+    const [isFullScreen, setIsFullScreen] = useState(false);
+    const [selectedNode, setSelectedNode] = useState(null);
+    const [globalSearch, setGlobalSearch] = useState('');
+    const [localFilter, setLocalFilter]   = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
+    const [tooltipPos, setTooltipPos]     = useState(null);
 
-    // Favorites
     const [favorites, setFavorites]   = useState(new Set());
     const [favLoading, setFavLoading] = useState(false);
 
-    // Easter Egg 🎉
     const [konamiProgress, setKonamiProgress] = useState(0);
     const [easterEggActive, setEasterEggActive] = useState(false);
     const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
 
-    // ── Load initial data ──────────────────────────────────────────────────
     useEffect(() => { loadGraphData(); }, [loadGraphData]);
 
-    // ── Load Favorites ─────────────────────────────────────────────────────
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (!token) return;
@@ -78,7 +134,6 @@ function TikTokAnalysis() {
             .catch(() => {});
     }, []);
 
-    // ── Toggle Favorite ────────────────────────────────────────────────────
     const handleToggleFavorite = async (influencerName) => {
         const token = localStorage.getItem('token');
         if (!token) { alert('กรุณาเข้าสู่ระบบก่อน'); return; }
@@ -99,14 +154,12 @@ function TikTokAnalysis() {
         finally { setFavLoading(false); }
     };
 
-    // ── Easter Egg ─────────────────────────────────────────────────────────
     useEffect(() => {
         const handleKeyDown = (e) => {
             const newProg = e.key === konamiCode[konamiProgress] ? konamiProgress + 1 : 0;
             setKonamiProgress(newProg);
             if (newProg === konamiCode.length) {
-                setEasterEggActive(true);
-                setKonamiProgress(0);
+                setEasterEggActive(true); setKonamiProgress(0);
                 setTimeout(() => setEasterEggActive(false), 5000);
             }
         };
@@ -114,7 +167,6 @@ function TikTokAnalysis() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [konamiProgress]);
 
-    // ── Physics ────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!fgRef.current) return;
         fgRef.current.d3Force('charge', d3.forceManyBody().strength(-300));
@@ -123,7 +175,6 @@ function TikTokAnalysis() {
         fgRef.current.d3ReheatSimulation();
     }, [data, dimensions]);
 
-    // ── Resize ─────────────────────────────────────────────────────────────
     useEffect(() => {
         const update = () => {
             if (isFullScreen) {
@@ -137,12 +188,10 @@ function TikTokAnalysis() {
         return () => window.removeEventListener('resize', update);
     }, [isFullScreen]);
 
-    // ── Auto Zoom Fit ──────────────────────────────────────────────────────
     useEffect(() => {
         if (fgRef.current) setTimeout(() => fgRef.current.zoomToFit(1000, 50), 800);
     }, [data]);
 
-    // ── Zoom to Category ───────────────────────────────────────────────────
     useEffect(() => {
         if (!selectedCategory || !fgRef.current || !data.nodes.length) return;
         const catNodes = data.nodes.filter(node => {
@@ -168,16 +217,12 @@ function TikTokAnalysis() {
         }, 100);
     }, [selectedCategory, data]);
 
-    // ── ?highlight= from Favorites page ───────────────────────────────────
     useEffect(() => {
         const name = new URLSearchParams(location.search).get('highlight');
         if (!name || !data.nodes.length || !fgRef.current) return;
         const target = data.nodes.find(n => n.name === name);
         if (!target) return;
-        setLocalFilter(name);
-        setSelectedNode(target);
-        setHoverNode(target);
-        updateHighlights(target);
+        setLocalFilter(name); setSelectedNode(target); setHoverNode(target); updateHighlights(target);
         setTimeout(() => {
             if (fgRef.current && target.x != null) {
                 fgRef.current.centerAt(target.x, target.y, 1000);
@@ -186,27 +231,45 @@ function TikTokAnalysis() {
         }, 800);
     }, [location.search, data.nodes]);
 
-    // ── Local Filter ───────────────────────────────────────────────────────
     useEffect(() => {
         if (!localFilter.trim()) { if (!selectedNode) clearHighlights(); return; }
         const match = data.nodes.find(n => n.name.toLowerCase().includes(localFilter.toLowerCase()));
         if (match && fgRef.current) {
-            setHoverNode(match);
-            updateHighlights(match);
+            setHoverNode(match); updateHighlights(match);
             fgRef.current.centerAt(match.x, match.y, 1000);
             fgRef.current.zoom(3, 1000);
         }
     }, [localFilter, data.nodes]);
 
-    // ── Graph Interaction ──────────────────────────────────────────────────
-    const handleNodeHover = (node) => {
+    // ── Hover ─────────────────────────────────────────────────────────────────
+    const handleNodeHover = useCallback((node, prevNode, event) => {
         if (selectedNode || localFilter) return;
         setHoverNode(node || null);
         updateHighlights(node);
-    };
+        if (node?.type === 'Influencer' && event) {
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (rect) setTooltipPos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+        } else {
+            setTooltipPos(null);
+        }
+    }, [selectedNode, localFilter, updateHighlights]);
+
+    useEffect(() => {
+        const canvas = containerRef.current?.querySelector('canvas');
+        if (!canvas) return;
+        const onMove = (e) => {
+            if (!hoverNode || hoverNode.type !== 'Influencer') return;
+            const rect = containerRef.current.getBoundingClientRect();
+            setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        };
+        canvas.addEventListener('mousemove', onMove);
+        return () => canvas.removeEventListener('mousemove', onMove);
+    }, [hoverNode]);
+
     const handleNodeClick = (node) => {
         const n = node === selectedNode ? null : node;
         setSelectedNode(n); setHoverNode(n); updateHighlights(n); setLocalFilter('');
+        setTooltipPos(null);
         if (fgRef.current) {
             if (n) { fgRef.current.centerAt(node.x, node.y, 1000); fgRef.current.zoom(1.75, 1000); }
             else fgRef.current.zoomToFit(1000, 50);
@@ -214,11 +277,11 @@ function TikTokAnalysis() {
     };
     const handleBackgroundClick = () => {
         setSelectedNode(null); setLocalFilter('');
-        clearHighlights();
+        clearHighlights(); setTooltipPos(null);
         if (fgRef.current) fgRef.current.zoomToFit(1000);
     };
 
-    // ── Paint Node ─────────────────────────────────────────────────────────
+    // ── Paint Node ────────────────────────────────────────────────────────────
     const paintNode = useCallback((node, ctx, globalScale) => {
         const isHover    = hoverNode === node;
         const isSelected = selectedNode === node;
@@ -288,19 +351,15 @@ function TikTokAnalysis() {
     }, [hoverNode, selectedNode, highlightNodes, selectedCategory, data.links,
         localFilter, easterEggActive, loadAvatarForNode, imgCache]);
 
-    // ── Render ─────────────────────────────────────────────────────────────
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
         <div className="analysis-page">
+            <style>{`@keyframes tooltipIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }`}</style>
             <LoadingOverlay isLoading={isLoading} />
 
-            {/* Header */}
             <div className="analysis-header-container">
-                <button className="back-to-platform-btn" onClick={() => navigate('/analysis')}>
-                    ← เลือก Platform
-                </button>
-                <div className="platform-badge-display" style={{ background: PLATFORM_COLOR }}>
-                    🎵 TikTok
-                </div>
+                <button className="back-to-platform-btn" onClick={() => navigate('/analysis')}>← เลือก Platform</button>
+                <div className="platform-badge-display" style={{ background: PLATFORM_COLOR }}>🎵 TikTok</div>
                 <div className="search-bar-wrapper">
                     <i className="fi fi-br-search search-icon" />
                     <input
@@ -312,37 +371,28 @@ function TikTokAnalysis() {
                         onKeyDown={e => e.key === 'Enter' && searchTikTok(globalSearch).then(() => setGlobalSearch(''))}
                     />
                 </div>
-                <button
-                    className="analyze-btn-small"
-                    style={{ background: PLATFORM_COLOR }}
-                    onClick={() => searchTikTok(globalSearch).then(() => setGlobalSearch(''))}
-                    disabled={isLoading}
-                >
+                <button className="analyze-btn-small" style={{ background: PLATFORM_COLOR }}
+                    onClick={() => searchTikTok(globalSearch).then(() => setGlobalSearch(''))} disabled={isLoading}>
                     {isLoading ? 'Loading...' : 'ค้นหา'}
                 </button>
             </div>
 
             <div className="analysis-content">
-                {/* Category Legend */}
                 <div className="legend-section">
                     <div className="legend-title">🎨 COLOR LEGEND — คลิกเพื่อกรอง</div>
                     <div className="legend-pills">
-                        <div
-                            className={`legend-pill ${selectedCategory === '' ? 'selected' : ''}`}
-                            onClick={() => { setSelectedCategory(''); fgRef.current?.zoomToFit(1000, 50); }}
-                        >
+                        <div className={`legend-pill ${selectedCategory === '' ? 'selected' : ''}`}
+                            onClick={() => { setSelectedCategory(''); fgRef.current?.zoomToFit(1000, 50); }}>
                             <div className="legend-dot" style={{ background: '#f0f0f0', border: '1.5px solid #ccc' }} />
                             All
                         </div>
                         {CATEGORIES.map((cat, i) => (
-                            <div
-                                key={i}
+                            <div key={i}
                                 className={`legend-pill ${selectedCategory === cat.name ? 'selected' : ''}`}
                                 onClick={() => {
                                     setSelectedCategory(prev => prev === cat.name ? '' : cat.name);
                                     if (selectedCategory === cat.name) fgRef.current?.zoomToFit(1000, 50);
-                                }}
-                            >
+                                }}>
                                 <div className="legend-dot" style={{ background: cat.color }} />
                                 {cat.name}
                             </div>
@@ -350,17 +400,15 @@ function TikTokAnalysis() {
                     </div>
                 </div>
 
-                {/* Graph area */}
                 <div className="graph-wrapper">
                     <FilterToolbar
                         localFilter={localFilter}
                         setLocalFilter={setLocalFilter}
                         onRefresh={() => { loadGraphData(); setLocalFilter(''); setSelectedCategory(''); }}
-                        onSync={syncDB}
+                        platform="tiktok"
                     />
 
                     <div className="graph-outer">
-                        {/* Popup */}
                         <NodePopupCard
                             node={selectedNode}
                             imgCache={imgCache}
@@ -370,9 +418,7 @@ function TikTokAnalysis() {
                             onToggleFavorite={handleToggleFavorite}
                         />
 
-                        {/* Graph Canvas */}
-                        <div
-                            ref={containerRef}
+                        <div ref={containerRef}
                             className={`graph-container ${isFullScreen ? 'fullscreen' : ''}`}
                             style={{
                                 position: isFullScreen ? 'fixed' : 'relative',
@@ -385,6 +431,9 @@ function TikTokAnalysis() {
                             <button className="fullscreen-btn" onClick={() => setIsFullScreen(!isFullScreen)}>
                                 {isFullScreen ? '✖️' : '⤢'}
                             </button>
+
+                            {/* ✅ ส่ง links แทน data ทั้งก้อน */}
+                            <NodeTooltip node={hoverNode} pos={tooltipPos} links={data.links} />
 
                             <ForceGraph2D
                                 ref={fgRef}
