@@ -365,6 +365,106 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// API: Campaign — CRUD
+// ─────────────────────────────────────────
+
+// ── LIST (public) ──
+app.get('/api/campaigns', async (req, res) => {
+    try {
+        const { category, status = 'open', search, page = 1, limit = 20 } = req.query;
+        const filter = {};
+        if (status) filter.status = status;
+        if (category) filter.category = category;
+        if (search) {
+            const regex = new RegExp(search.trim(), 'i');
+            filter.$or = [{ title: regex }, { description: regex }];
+        }
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const [campaigns, total] = await Promise.all([
+            Campaign.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).select('-applicants').lean(),
+            Campaign.countDocuments(filter),
+        ]);
+        res.json({ campaigns, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── DETAIL (public) ──
+app.get('/api/campaigns/:id', async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id).lean();
+        if (!campaign) return res.status(404).json({ message: 'ไม่พบแคมเปญนี้' });
+        res.json(campaign);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── CREATE (ต้อง login) ──
+app.post('/api/campaigns', authMiddleware, async (req, res) => {
+    try {
+        const { title, description, budget, category, jobType, images } = req.body;
+        if (!title || !description || !category) {
+            return res.status(400).json({ message: 'กรุณากรอก ชื่องาน, รายละเอียด, และหมวดหมู่' });
+        }
+        const safeImages = Array.isArray(images) ? images.slice(0, 5) : [];
+        const campaign = await Campaign.create({
+            author: { userId: req.user.id, name: req.user.name, email: req.user.email },
+            title, description, budget: budget || 0, category,
+            jobType: jobType || 'freelance', images: safeImages, status: 'open',
+        });
+        res.status(201).json(campaign);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── UPDATE (เจ้าของเท่านั้น) ──
+app.put('/api/campaigns/:id', authMiddleware, async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id);
+        if (!campaign) return res.status(404).json({ message: 'ไม่พบแคมเปญนี้' });
+        if (campaign.author.userId.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขแคมเปญนี้' });
+        }
+        const allowed = ['title', 'description', 'budget', 'category', 'jobType', 'images', 'status'];
+        allowed.forEach(key => { if (req.body[key] !== undefined) campaign[key] = req.body[key]; });
+        await campaign.save();
+        res.json(campaign);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── DELETE (เจ้าของเท่านั้น) ──
+app.delete('/api/campaigns/:id', authMiddleware, async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id);
+        if (!campaign) return res.status(404).json({ message: 'ไม่พบแคมเปญนี้' });
+        if (campaign.author.userId.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'คุณไม่มีสิทธิ์ลบแคมเปญนี้' });
+        }
+        await Campaign.findByIdAndDelete(req.params.id);
+        res.json({ message: 'ลบแคมเปญเรียบร้อย' });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── APPLY (ต้อง login) ──
+app.post('/api/campaigns/:id/apply', authMiddleware, async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id);
+        if (!campaign) return res.status(404).json({ message: 'ไม่พบแคมเปญนี้' });
+        if (campaign.status !== 'open') return res.status(400).json({ message: 'แคมเปญนี้ปิดรับสมัครแล้ว' });
+        const alreadyApplied = campaign.applicants.some(a => a.userId.toString() === req.user.id);
+        if (alreadyApplied) return res.status(400).json({ message: 'คุณสมัครแคมเปญนี้แล้ว' });
+        campaign.applicants.push({ userId: req.user.id, name: req.user.name, message: req.body.message || '' });
+        await campaign.save();
+        res.json({ message: 'สมัครเข้าร่วมแคมเปญเรียบร้อย', applicantCount: campaign.applicants.length });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── MY CAMPAIGNS (ต้อง login) ──
+app.get('/api/my-campaigns', authMiddleware, async (req, res) => {
+    try {
+        const campaigns = await Campaign.find({ 'author.userId': req.user.id }).sort({ createdAt: -1 }).lean();
+        res.json(campaigns);
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────
 // API: Favorites
 // ─────────────────────────────────────────
 app.post('/api/favorites/toggle', authMiddleware, async (req, res) => {

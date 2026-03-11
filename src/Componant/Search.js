@@ -7,15 +7,8 @@ function Search() {
     const [inputValue, setInputValue] = useState('');
     const [loading, setLoading]       = useState(false);
     const navigate = useNavigate();
-
-    const handleSearch = async () => {
-        if (!inputValue.trim()) return alert('กรุณาพิมพ์คำค้นหาก่อนครับ');
-        navigate('/analysis');
-    };
-
     return (
         <section className="hero">
-            <LoadingOverlay isLoading={loading} />
 
             {/* Blobs */}
             <div className="hero__blobs">
@@ -41,26 +34,6 @@ function Search() {
                 แมปความสัมพันธ์ระหว่าง Influencer กับแบรนด์ด้วย Graph Network ที่เข้าใจง่าย
             </p>
 
-            {/* Search Box */}
-            <div className="hero__search-box">
-                <span className="hero__search-emoji">🔍</span>
-                <input
-                    type="text"
-                    placeholder="#beauty หรือ @username..."
-                    className="hero__search-input"
-                    value={inputValue}
-                    onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                />
-                <button
-                    className="btn btn--dark btn--sm hero__search-btn"
-                    onClick={handleSearch}
-                    disabled={loading}
-                >
-                    {loading ? '...' : 'ค้นหา'}
-                </button>
-            </div>
-
             {/* Platform Pills */}
             <div className="hero__pills">
                 <button
@@ -74,6 +47,12 @@ function Search() {
                     onClick={() => navigate('/analysis/youtube')}
                 >
                     ▶️ YouTube
+                </button>
+                <button
+                    className="hero__pill hero__pill--jobboard"
+                    onClick={() => navigate('/jobboard')}
+                >
+                    📋 Jobboard
                 </button>
             </div>
 
@@ -94,5 +73,21 @@ function Search() {
         </section>
     );
 }
+
+
+const styles = {
+    /* 2 Platform Buttons */
+    platformRow: {
+        display: 'flex', justifyContent: 'center', gap: 16,
+        flexWrap: 'wrap', marginBottom: 60,
+    },
+    platformBtn: {
+        display: 'inline-flex', alignItems: 'center', gap: 10,
+        padding: '16px 36px', borderRadius: 16, border: 'none',
+        cursor: 'pointer', fontFamily: "'Prompt', sans-serif",
+        transition: 'all 0.3s ease', fontSize: 17, fontWeight: 700,
+        color: '#fff',
+    },
+};
 
 export default Search;
