@@ -13,10 +13,13 @@ import Analysis from './Componant/Analysis';
 import Favorites from './Componant/Favorites';
 import Login from './Componant/Login';
 
+
 // ── Jobboard ──
 import Jobboard from './Componant/Jobboard';
 import CreateCampaign from './Componant/Jobboard/CreateCampaign';
 import CampaignDetail from './Componant/Jobboard/CampaignDetail';
+import EditCampaign from './Componant/Jobboard/EditCampaign';
+import MyCampaigns  from './Componant/Jobboard/MyCampaigns';
 
 // ─── Home Page ────────────────────────────────
 function HomePage() {
@@ -45,6 +48,8 @@ function App() {
                 <Route path="/jobboard"            element={<Jobboard />} />
                 <Route path="/jobboard/create"     element={<CreateCampaign />} />
                 <Route path="/jobboard/:id"        element={<CampaignDetail />} />
+                <Route path="/jobboard/:id/edit" element={<EditCampaign />} />
+                <Route path="/my-campaigns"      element={<MyCampaigns />} />
             </Routes>
         </Router>
     );

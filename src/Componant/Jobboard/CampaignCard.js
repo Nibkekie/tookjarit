@@ -1,13 +1,14 @@
 // src/Componant/Jobboard/CampaignCard.js
-import React from 'react';
+import React, { useState } from 'react';
 import './Jobboard.css';
+
+const API = 'http://localhost:5000';
 
 const JOB_TYPE_LABEL = {
     freelance: { text: 'ฟรีแลนซ์', color: '#6c5ce7', bg: '#f0eeff' },
     contract:  { text: 'สัญญาจ้าง', color: '#e17055', bg: '#fff3f0' },
     parttime:  { text: 'พาร์ทไทม์', color: '#00b894', bg: '#f0fff8' },
 };
-
 const CATEGORY_EMOJI = {
     'Fashion': '👗', 'Beauty & Personal Care': '💄', 'Health & Wellness': '💊',
     'Food & Beverage': '🍜', 'Mom & Kids': '👶', 'IT & Gadgets': '📱',
@@ -15,18 +16,50 @@ const CATEGORY_EMOJI = {
     'Automotive': '🚗', 'Lifestyle': '✨',
 };
 
+function getImageUrl(img) {
+    if (!img) return '';
+    if (img.startsWith('http')) return img;
+    // ตรวจสอบว่า path มี /uploads/ นำหน้าหรือเปล่า
+    const clean = img.startsWith('/') ? img : `/${img}`;
+    return `${API}${clean}`;
+}
+
 function CampaignCard({ campaign, onClick }) {
     const c = campaign;
     const jobInfo = JOB_TYPE_LABEL[c.jobType] || JOB_TYPE_LABEL.freelance;
     const hasImage = c.images && c.images.length > 0;
+    const [imgError, setImgError] = useState(false);
+
+    const imageUrl = hasImage ? getImageUrl(c.images[0]) : '';
+
+    // Debug: log URL ที่จะโหลด
+    if (hasImage && imageUrl) {
+        console.log('🖼️ Card image URL:', imageUrl);
+    }
 
     return (
         <div className="campaign-card" onClick={onClick}>
-            {hasImage && (
+            {hasImage && !imgError ? (
                 <div className="campaign-card-image">
-                    <img src={c.images[0]} alt={c.title} onError={e => { e.target.style.display = 'none'; }} />
+                    <img
+                        src={imageUrl}
+                        alt={c.title}
+                        onError={(e) => {
+                            console.error('❌ Image load failed:', imageUrl);
+                            setImgError(true);
+                        }}
+                    />
                 </div>
-            )}
+            ) : hasImage && imgError ? (
+                // placeholder เมื่อรูปโหลดไม่ได้ — แสดง emoji แทน
+                <div className="campaign-card-image campaign-card-image--placeholder">
+                    <span>{CATEGORY_EMOJI[c.category] || '🖼️'}</span>
+                    <small style={{ fontSize: 10, color: '#ccc', display: 'block', marginTop: 4 }}>
+                        {imageUrl}
+                    </small>
+                </div>
+            ) : null}
+
             <div className="campaign-card-body">
                 <div className="campaign-card-tags">
                     <span className="campaign-tag" style={{ color: jobInfo.color, background: jobInfo.bg }}>

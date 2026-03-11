@@ -160,3 +160,478 @@
     color: #ff4757;
     background: #fff5f5;
 }
+/* ─────────────────────────────────────
+   INJECT STYLES (เพิ่มใน Jobboard.css)
+   Copy ส่วนนี้ไปใส่ใน Jobboard.css
+─────────────────────────────────────*/
+
+.contact-text {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.9;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.contact-link {
+    display: inline-block;
+    color: #0984e3;
+    background: #f0f7ff;
+    border: 1px solid #cce3ff;
+    border-radius: 8px;
+    padding: 4px 10px;
+    margin: 2px 0;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+    word-break: break-all;
+}
+.contact-link:hover {
+    background: #0984e3;
+    color: #fff;
+    border-color: #0984e3;
+}
+
+.applicants-section {
+    margin-top: 24px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid #f0f0f0;
+    background: #fff;
+}
+.applicants-toggle-btn {
+    width: 100%;
+    padding: 18px 24px;
+    background: #fff;
+    border: none;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1a1a;
+    cursor: pointer;
+    font-family: 'Prompt', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s;
+}
+.applicants-toggle-btn:hover { background: #fafafa; }
+.applicants-list {
+    border-top: 1px solid #f5f5f5;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.applicant-card {
+    border: 1.5px solid #f0f0f0;
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+.applicant-card:hover { border-color: #ddd; }
+.applicant-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+}
+.applicant-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.applicant-info { flex: 1; }
+.applicant-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+.applicant-time { font-size: 11px; color: #bbb; margin-top: 2px; }
+.applicant-expand-btn {
+    font-size: 16px;
+    color: #999;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+.applicant-preview {
+    padding: 0 16px 12px;
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+}
+.applicant-message {
+    padding: 12px 16px;
+    background: #fafafa;
+    border-top: 1px solid #f0f0f0;
+}
+.applicant-message-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    margin-bottom: 6px;
+}
+.applicant-message-text {
+    font-size: 13px;
+    color: #444;
+    line-height: 1.7;
+    margin: 0;
+    white-space: pre-wrap;
+}
+.applicants-empty {
+    margin-top: 24px;
+    padding: 32px;
+    background: #fff;
+    border-radius: 20px;
+    border: 1px dashed #e0e0e0;
+    text-align: center;
+    color: #ccc;
+    font-size: 13px;
+}
+.applicants-empty span { font-size: 28px; display: block; margin-bottom: 8px; }
+
+/* ═══════════════════════════════════════
+   เพิ่มส่วนนี้ต่อท้าย Jobboard.css
+   ═══════════════════════════════════════ */
+
+/* ── Contact Links ── */
+.contact-text {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.9;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.contact-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #0984e3;
+    background: #f0f7ff;
+    border: 1px solid #cce3ff;
+    border-radius: 8px;
+    padding: 4px 10px;
+    margin: 2px 0;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: 'Prompt', sans-serif;
+    transition: all 0.2s;
+    word-break: break-all;
+}
+.contact-link:hover {
+    background: #0984e3;
+    color: #fff;
+    border-color: #0984e3;
+}
+
+/* ── Applicants Section ── */
+.applicants-section {
+    margin-top: 24px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid #f0f0f0;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+.applicants-toggle-btn {
+    width: 100%;
+    padding: 18px 24px;
+    background: #fff;
+    border: none;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1a1a;
+    cursor: pointer;
+    font-family: 'Prompt', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s;
+}
+.applicants-toggle-btn:hover { background: #fafafa; }
+.applicants-list {
+    border-top: 1px solid #f5f5f5;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ── Applicant Card ── */
+.applicant-card {
+    border: 1.5px solid #f0f0f0;
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.applicant-card:hover {
+    border-color: #e0e0e0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+.applicant-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+}
+.applicant-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.applicant-info { flex: 1; min-width: 0; }
+.applicant-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.applicant-time { font-size: 11px; color: #bbb; margin-top: 2px; }
+.applicant-expand-btn {
+    font-size: 18px;
+    color: #bbb;
+    transition: transform 0.25s ease;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.applicant-preview {
+    padding: 0 16px 12px;
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.5;
+}
+.applicant-message {
+    padding: 14px 16px;
+    background: #fafafa;
+    border-top: 1px solid #f0f0f0;
+}
+.applicant-message-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #bbb;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+.applicant-message-text {
+    font-size: 13px;
+    color: #444;
+    line-height: 1.7;
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+/* ── No Applicants State ── */
+.applicants-empty {
+    margin-top: 24px;
+    padding: 36px;
+    background: #fff;
+    border-radius: 20px;
+    border: 1.5px dashed #e8e8e8;
+    text-align: center;
+    color: #ccc;
+    font-size: 13px;
+}
+.applicants-empty span {
+    font-size: 32px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+/* ── Contact clickable links ── */
+.contact-text {
+    font-size: 13px;
+    color: #555;
+    line-height: 2;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.contact-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #0984e3;
+    background: #f0f7ff;
+    border: 1px solid #cce3ff;
+    border-radius: 8px;
+    padding: 3px 10px;
+    margin: 2px 0;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: 'Prompt', sans-serif;
+    transition: all 0.18s;
+    word-break: break-all;
+}
+.contact-link:hover { background: #0984e3; color: #fff; border-color: #0984e3; }
+
+/* ── Applicants Section ── */
+.applicants-section {
+    margin-top: 24px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid #f0f0f0;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+.applicants-toggle-btn {
+    width: 100%; padding: 18px 24px;
+    background: #fff; border: none; text-align: left;
+    font-size: 15px; font-weight: 700; color: #1a1a1a;
+    cursor: pointer; font-family: 'Prompt', sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: background 0.2s;
+}
+.applicants-toggle-btn:hover { background: #fafafa; }
+.applicants-list {
+    border-top: 1px solid #f5f5f5;
+    padding: 12px 16px 16px;
+    display: flex; flex-direction: column; gap: 10px;
+}
+.applicant-card {
+    border: 1.5px solid #f0f0f0; border-radius: 14px;
+    overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.applicant-card:hover { border-color: #ddd; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.applicant-card-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; cursor: pointer;
+}
+.applicant-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; flex-shrink: 0;
+}
+.applicant-info { flex: 1; min-width: 0; }
+.applicant-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+.applicant-time { font-size: 11px; color: #bbb; margin-top: 2px; }
+.applicant-expand-btn { font-size: 18px; color: #bbb; transition: transform 0.25s ease; flex-shrink: 0; }
+.applicant-preview { padding: 0 16px 12px; font-size: 12px; color: #aaa; line-height: 1.5; }
+.applicant-message-wrap { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.applicant-message-wrap.expanded { max-height: 400px; }
+.applicant-message-inner { padding: 14px 16px; background: #fafafa; border-top: 1px solid #f0f0f0; }
+.applicant-message-label { font-size: 11px; font-weight: 700; color: #bbb; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.applicant-message-text { font-size: 13px; color: #444; line-height: 1.7; margin: 0; white-space: pre-wrap; }
+
+/* ══════════════════════════════
+   MY CAMPAIGNS PAGE
+   ══════════════════════════════ */
+
+/* Stats Bar */
+.my-stats-bar {
+    max-width: 1200px; margin: 0 auto;
+    padding: 20px 24px 0;
+    display: flex; align-items: center; gap: 0;
+    background: #fff; border-radius: 16px;
+    border: 1px solid #f0f0f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    margin-top: 20px;
+    overflow: hidden;
+}
+.my-stat-item {
+    flex: 1; text-align: center; padding: 16px 8px;
+}
+.my-stat-num { font-size: 1.6rem; font-weight: 800; color: #1a1a1a; }
+.my-stat-label { font-size: 12px; color: #aaa; margin-top: 2px; }
+.my-stat-divider { width: 1px; height: 40px; background: #f0f0f0; flex-shrink: 0; }
+
+/* Filter Tabs */
+.my-filter-tabs {
+    max-width: 1200px; margin: 16px auto 0;
+    padding: 0 24px;
+    display: flex; gap: 8px;
+}
+.my-filter-tab {
+    padding: 8px 20px; border-radius: 50px;
+    border: 1.5px solid #e0e0e0; background: #fff;
+    font-size: 13px; font-weight: 500;
+    font-family: 'Prompt', sans-serif;
+    color: #666; cursor: pointer; transition: all 0.2s;
+}
+.my-filter-tab.active { background: #ff4757; color: #fff; border-color: #ff4757; }
+.my-filter-tab:hover:not(.active) { border-color: #ccc; background: #fafafa; }
+
+/* Campaign Rows */
+.my-campaigns-list {
+    display: flex; flex-direction: column; gap: 12px;
+}
+.my-campaign-row {
+    background: #fff; border-radius: 16px;
+    border: 1.5px solid #f0f0f0;
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 16px;
+    transition: all 0.2s; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.my-campaign-row:hover { border-color: #ddd; box-shadow: 0 6px 20px rgba(0,0,0,0.08); transform: translateY(-1px); }
+.my-campaign-row--closed { opacity: 0.65; }
+
+.my-campaign-thumb {
+    width: 72px; height: 72px; border-radius: 12px;
+    overflow: hidden; flex-shrink: 0; background: #f3f4f6;
+}
+.my-campaign-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.my-campaign-thumb--empty {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+}
+
+.my-campaign-body { flex: 1; min-width: 0; }
+.my-campaign-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.my-campaign-title {
+    font-size: 15px; font-weight: 700; color: #1a1a1a;
+    margin: 0 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.my-campaign-meta { display: flex; gap: 14px; font-size: 12px; color: #aaa; flex-wrap: wrap; }
+.my-campaign-applicants { color: #ff4757; font-weight: 600; }
+
+.my-campaign-actions {
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+}
+.my-action-btn {
+    padding: 8px 14px; border-radius: 50px;
+    font-size: 12px; font-weight: 600;
+    font-family: 'Prompt', sans-serif;
+    cursor: pointer; border: 1.5px solid transparent;
+    transition: all 0.18s; white-space: nowrap;
+}
+.my-action-btn--edit { background: #fff8e1; color: #f39c12; border-color: #fde68a; }
+.my-action-btn--edit:hover { background: #f39c12; color: #fff; }
+.my-action-btn--pause { background: #fff3f0; color: #e17055; border-color: #fad4cc; }
+.my-action-btn--pause:hover { background: #e17055; color: #fff; }
+.my-action-btn--resume { background: #f0fff0; color: #00b894; border-color: #b2f0e0; }
+.my-action-btn--resume:hover { background: #00b894; color: #fff; }
+.my-action-btn--delete { background: #fff; color: #ff4757; border-color: #ffcdd2; padding: 8px 10px; }
+.my-action-btn--delete:hover { background: #ff4757; color: #fff; }
+.my-action-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Empty State */
+.my-empty-state {
+    text-align: center; padding: 80px 24px;
+}
+.my-empty-icon { font-size: 56px; margin-bottom: 16px; }
+.my-empty-state h3 { font-size: 1.3rem; font-weight: 700; color: #1a1a1a; margin: 0 0 8px; }
+.my-empty-state p { font-size: 14px; color: #aaa; margin: 0; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .my-campaign-row { flex-wrap: wrap; }
+    .my-campaign-actions { width: 100%; justify-content: flex-end; padding-top: 8px; border-top: 1px solid #f5f5f5; }
+    .my-stats-bar { flex-wrap: wrap; gap: 0; }
+}

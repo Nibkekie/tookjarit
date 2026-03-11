@@ -13,6 +13,8 @@ const SearchHistory = require('./SearchHistory');
 const Campaign = require('./Campaign');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+              // ✅ FIX: เพิ่ม fs
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tookjarit-secret-key-2024';
 
@@ -20,20 +22,49 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ✅ FIX: สร้างโฟลเดอร์ uploads/campaigns อัตโนมัติถ้ายังไม่มี
+const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'campaigns');
+const uploadsRoot = path.join(__dirname, '..', '..', 'uploads');
+
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('📁 Created uploads/campaigns folder');
+}
+
+// DEBUG log — ดูตอน restart server ว่า path ถูกไหม
+console.log('📁 uploadDir  :', uploadDir);
+console.log('📁 staticFrom :', uploadsRoot);
+
+// ✅ Serve static + debug log ทุก request รูป
+app.use('/uploads', (req, res, next) => {
+    console.log('🖼️  Image request:', req.path, '→', path.join(uploadsRoot, req.path));
+    next();
+}, express.static(uploadsRoot));
+
+// ── Multer config สำหรับอัปโหลดรูปแคมเปญ ──
 const storage = multer.diskStorage({
-       destination: (req, file, cb) => cb(null, 'uploads/campaigns'),
-       filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s/g, '_'))
-  });
-   const uploadCampaignImages = multer({
-       storage,
-       limits: { fileSize: 5 * 1024 * 1024 },  // 5MB per file
-       fileFilter: (req, file, cb) => {
-          const allowed = /jpeg|jpg|png|gif|webp/;
-           const ok = allowed.test(path.extname(file.originalname).toLowerCase()) && allowed.test(file.mimetype);
-           cb(ok ? null : new Error('อนุญาตเฉพาะไฟล์รูปภาพเท่านั้น'), ok);
-       }
-   }).array('images', 5);
-   app.use('/uploads', express.static('uploads'));
+    destination: (req, file, cb) => cb(null, uploadDir),
+    filename: (req, file, cb) => {
+        // ลบ space + ตัวอักษรพิเศษออกจากชื่อไฟล์
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        cb(null, Date.now() + '-' + safeName);
+    }
+});
+const uploadCampaignImages = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 },  // 5MB per file
+    fileFilter: (req, file, cb) => {
+        const allowed = /jpeg|jpg|png|gif|webp/;
+        const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+        const mimeOk = allowed.test(file.mimetype);
+        if (extOk && mimeOk) {
+            cb(null, true);
+        } else {
+            cb(new Error('อนุญาตเฉพาะไฟล์รูปภาพ (jpg, png, gif, webp) เท่านั้น'), false);
+        }
+    }
+}).array('images', 5);
+
 
 // --- Setup Clients ---
 const apifyClient = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
@@ -62,6 +93,16 @@ const getDisplayBrand = (brand, productType) => {
         return productType || "General Product";
     }
     return brand;
+};
+
+// ─────────────────────────────────────────
+// Auth Middleware (ย้ายขึ้นมาก่อน routes ที่ใช้)
+// ─────────────────────────────────────────
+const authMiddleware = (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'กรุณาเข้าสู่ระบบก่อน' });
+    try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+    catch { res.status(401).json({ message: 'Token ไม่ถูกต้องหรือหมดอายุ' }); }
 };
 
 // ─────────────────────────────────────────
@@ -122,7 +163,6 @@ app.post('/api/search-tiktok', async (req, res) => {
 
         try { await Influencer.insertMany(processedData, { ordered: false }); } catch (e) { if (e.code !== 11000) console.error(e); }
 
-        // ✅ FIX 1: search-tiktok — เพิ่ม totalComments + totalShares ใน Neo4j MERGE
         const session = driver.session();
         try {
             await session.run(`
@@ -163,21 +203,11 @@ app.post('/api/search-tiktok', async (req, res) => {
 app.get('/api/last-updated', async (req, res) => {
     const platform = req.query.platform || 'tiktok';
     try {
-        const fromHistory = await SearchHistory
-            .findOne({ platform })
-            .sort({ lastSearched: -1 })
-            .lean();
+        const fromHistory = await SearchHistory.findOne({ platform }).sort({ lastSearched: -1 }).lean();
         if (fromHistory) return res.json({ lastUpdated: fromHistory.lastSearched });
-
-        const fromInfluencer = await Influencer
-            .findOne({ platform })
-            .sort({ updatedAt: -1 })
-            .select('updatedAt')
-            .lean();
+        const fromInfluencer = await Influencer.findOne({ platform }).sort({ updatedAt: -1 }).select('updatedAt').lean();
         res.json({ lastUpdated: fromInfluencer?.updatedAt || null });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─────────────────────────────────────────
@@ -202,16 +232,9 @@ app.get('/api/suggestions', async (req, res) => {
         ]);
 
         const SKIP_BRANDS = ['Unknown', 'No Brand', 'No Brand Name'];
-        const filteredBrands = brands.filter(b =>
-            b && !CATEGORY_LIST.includes(b) && !SKIP_BRANDS.includes(b)
-        );
-
-        // ← ตรงนี้สำคัญ: match category จาก list โดยตรง
+        const filteredBrands = brands.filter(b => b && !CATEGORY_LIST.includes(b) && !SKIP_BRANDS.includes(b));
         const matchedCategories = CATEGORY_LIST.filter(c => regex.test(c));
-
-        const filteredProductTypes = productTypes.filter(p =>
-            p && !['Unknown', 'unknown', ''].includes(p)
-        );
+        const filteredProductTypes = productTypes.filter(p => p && !['Unknown', 'unknown', ''].includes(p));
 
         const results = [
             ...influencers         .slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
@@ -222,8 +245,9 @@ app.get('/api/suggestions', async (req, res) => {
         res.json(results);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 // ─────────────────────────────────────────
-// API: Graph Data ✅ เพิ่ม totalComments + totalShares + profileLikes
+// API: Graph Data
 // ─────────────────────────────────────────
 app.get('/api/graph-data', async (req, res) => {
     const platform = req.query.platform || 'tiktok';
@@ -243,10 +267,8 @@ app.get('/api/graph-data', async (req, res) => {
             const i = rec.get('i');
             const b = rec.get('b');
             const r = rec.get('r');
-
             const iId = i.elementId;
 
-            // ✅ FIX 2: graph-data — ดึง totalComments + totalShares จาก Neo4j
             const rViews    = r.properties.totalViews?.low    ?? r.properties.totalViews    ?? 0;
             const rLikes    = r.properties.totalLikes?.low    ?? r.properties.totalLikes    ?? 0;
             const rComments = r.properties.totalComments?.low ?? r.properties.totalComments ?? 0;
@@ -258,9 +280,7 @@ app.get('/api/graph-data', async (req, res) => {
 
             if (!seen.has(iId)) {
                 nodes.push({
-                    id: iId,
-                    name: i.properties.name,
-                    type: 'Influencer',
+                    id: iId, name: i.properties.name, type: 'Influencer',
                     followers: i.properties.followers?.low || i.properties.followers || 0,
                     authorAvatar: i.properties.authorAvatar || '',
                     platform: i.properties.platform || platform,
@@ -269,23 +289,14 @@ app.get('/api/graph-data', async (req, res) => {
                 seen.add(iId);
             }
             if (!seen.has(b.elementId)) {
-                nodes.push({
-                    id: b.elementId,
-                    name: b.properties.name,
-                    type: 'Brand',
-                    category: b.properties.category,
-                });
+                nodes.push({ id: b.elementId, name: b.properties.name, type: 'Brand', category: b.properties.category });
                 seen.add(b.elementId);
             }
 
             links.push({
-                source:        iId,
-                target:        b.elementId,
-                weight:        r.properties.weight?.low ?? 1,
-                totalViews:    rViews,
-                totalLikes:    rLikes,
-                totalComments: rComments,  // ✅
-                totalShares:   rShares,    // ✅
+                source: iId, target: b.elementId,
+                weight: r.properties.weight?.low ?? 1,
+                totalViews: rViews, totalLikes: rLikes, totalComments: rComments, totalShares: rShares,
             });
         });
 
@@ -297,15 +308,12 @@ app.get('/api/graph-data', async (req, res) => {
         });
 
         res.json({ nodes, links });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    } finally {
-        await session.close();
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
+    finally { await session.close(); }
 });
 
 // ─────────────────────────────────────────
-// API: Sync MongoDB → Neo4j 
+// API: Sync MongoDB → Neo4j
 // ─────────────────────────────────────────
 app.get('/api/sync-mongo-to-neo4j', async (req, res) => {
     try {
@@ -315,47 +323,28 @@ app.get('/api/sync-mongo-to-neo4j', async (req, res) => {
             await session.run(`
                 UNWIND $batch AS row
                 MERGE (i:Influencer {name: row.authorName})
-                ON CREATE SET i.followers = row.followers, i.authorAvatar = row.authorAvatar,
-                              i.platform = row.platform, i.profileLikes = row.profileLikes
-                ON MATCH SET  i.followers = row.followers, i.authorAvatar = row.authorAvatar,
-                              i.platform = row.platform, i.profileLikes = row.profileLikes
+                ON CREATE SET i.followers = row.followers, i.authorAvatar = row.authorAvatar, i.platform = row.platform, i.profileLikes = row.profileLikes
+                ON MATCH SET  i.followers = row.followers, i.authorAvatar = row.authorAvatar, i.platform = row.platform, i.profileLikes = row.profileLikes
                 MERGE (b:Brand {name: row.finalBrand})
                 ON CREATE SET b.category = row.category
                 ON MATCH SET  b.category = row.category
                 MERGE (i)-[r:POSTED_ABOUT]->(b)
-                SET r.totalViews    = row.totalViews,
-                    r.totalLikes    = row.totalLikes,
-                    r.totalComments = row.totalComments,
-                    r.totalShares   = row.totalShares
+                SET r.totalViews = row.totalViews, r.totalLikes = row.totalLikes,
+                    r.totalComments = row.totalComments, r.totalShares = row.totalShares
             `, {
                 batch: influencers.map(inf => ({
-                    authorName:    inf.authorName,
-                    authorAvatar:  inf.authorAvatar  || "",
-                    followers:     inf.followers     || 0,
-                    profileLikes:  inf.profileLikes  || 0,
-                    platform:      inf.platform      || 'tiktok',
-                    totalViews:    inf.totalViews    || 0,
-                    totalLikes:    inf.totalLikes    || 0,
-                    totalComments: inf.totalComments || 0,  // ✅
-                    totalShares:   inf.totalShares   || 0,  // ✅
-                    finalBrand:    getDisplayBrand(inf.brand, inf.productType),
-                    category:      inf.category,
+                    authorName: inf.authorName, authorAvatar: inf.authorAvatar || "",
+                    followers: inf.followers || 0, profileLikes: inf.profileLikes || 0,
+                    platform: inf.platform || 'tiktok',
+                    totalViews: inf.totalViews || 0, totalLikes: inf.totalLikes || 0,
+                    totalComments: inf.totalComments || 0, totalShares: inf.totalShares || 0,
+                    finalBrand: getDisplayBrand(inf.brand, inf.productType), category: inf.category,
                 }))
             });
             res.json({ status: "success", count: influencers.length });
         } finally { await session.close(); }
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ─────────────────────────────────────────
-// Auth Middleware
-// ─────────────────────────────────────────
-const authMiddleware = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'กรุณาเข้าสู่ระบบก่อน' });
-    try { req.user = jwt.verify(token, JWT_SECRET); next(); }
-    catch { res.status(401).json({ message: 'Token ไม่ถูกต้องหรือหมดอายุ' }); }
-};
 
 // ─────────────────────────────────────────
 // API: Auth
@@ -410,8 +399,26 @@ app.get('/api/favorites', authMiddleware, async (req, res) => {
 });
 
 // ─────────────────────────────────────────
-// API: Campaign
+// API: Campaign — CRUD
 // ─────────────────────────────────────────
+
+app.get('/api/debug-uploads', (req, res) => {
+    const root = path.join(__dirname, '..', '..', 'uploads');
+    const campaigns = path.join(root, 'campaigns');
+    let files = [];
+    try { if (fs.existsSync(campaigns)) files = fs.readdirSync(campaigns); }
+    catch(e) { files = ['ERROR: ' + e.message]; }
+
+    res.json({
+        __dirname,
+        uploadsRoot: root,
+        campaignsDir: campaigns,
+        uploadsExists: fs.existsSync(root),
+        campaignsDirExists: fs.existsSync(campaigns),
+        files,
+        sampleUrl: files[0] ? `http://localhost:5000/uploads/campaigns/${files[0]}` : 'no files'
+    });
+});
 
 // ── LIST (public) ──
 app.get('/api/campaigns', async (req, res) => {
@@ -450,13 +457,16 @@ app.get('/api/campaigns/:id', async (req, res) => {
 
 // ── CREATE (ต้อง login + upload รูป) ──
 app.post('/api/campaigns', authMiddleware, (req, res) => {
-    uploadCampaignImages(req, res, async (err) => {
-        if (err) {
-            console.error('❌ Upload error:', err.message);
-            return res.status(400).json({ message: err.message });
+    uploadCampaignImages(req, res, async (uploadErr) => {
+        if (uploadErr) {
+            console.error('❌ Upload error:', uploadErr.message);
+            return res.status(400).json({ message: uploadErr.message });
         }
         try {
             const { title, description, budget, category, jobType, contact } = req.body;
+
+            console.log('📦 req.body:', JSON.stringify(req.body));
+            console.log('📷 req.files:', req.files?.length || 0, 'files');
 
             if (!title || !description || !category) {
                 return res.status(400).json({ message: 'กรุณากรอก ชื่องาน, รายละเอียด, และหมวดหมู่' });
@@ -465,12 +475,12 @@ app.post('/api/campaigns', authMiddleware, (req, res) => {
                 return res.status(400).json({ message: 'กรุณากรอกช่องทางการติดต่อ' });
             }
 
-            // รูปจาก multer upload
             const imageFiles = req.files ? req.files.map(f => `/uploads/campaigns/${f.filename}`) : [];
 
             const campaign = await Campaign.create({
                 author: { userId: req.user.id, name: req.user.name, email: req.user.email },
-                title, description,
+                title: title.trim(),
+                description: description.trim(),
                 budget: parseInt(budget) || 0,
                 category,
                 jobType: jobType || 'freelance',
@@ -479,7 +489,7 @@ app.post('/api/campaigns', authMiddleware, (req, res) => {
                 status: 'open',
             });
 
-            console.log('✅ Campaign created:', campaign.title);
+            console.log('✅ Campaign created:', campaign.title, '| images:', imageFiles.length);
             res.status(201).json(campaign);
         } catch (e) {
             console.error('❌ POST /api/campaigns error:', e.message);
@@ -501,6 +511,24 @@ app.put('/api/campaigns/:id', authMiddleware, async (req, res) => {
         await campaign.save();
         res.json(campaign);
     } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── UPLOAD IMAGES สำหรับ EditCampaign ──
+app.post('/api/campaigns/:id/upload-images', authMiddleware, (req, res) => {
+    uploadCampaignImages(req, res, async (uploadErr) => {
+        if (uploadErr) return res.status(400).json({ message: uploadErr.message });
+        try {
+            const campaign = await Campaign.findById(req.params.id);
+            if (!campaign) return res.status(404).json({ message: 'ไม่พบแคมเปญนี้' });
+            if (campaign.author.userId.toString() !== req.user.id) {
+                return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขแคมเปญนี้' });
+            }
+            const paths = req.files ? req.files.map(f => `/uploads/campaigns/${f.filename}`) : [];
+            res.json({ paths });
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    });
 });
 
 // ── DELETE (เจ้าของเท่านั้น) ──
@@ -537,6 +565,7 @@ app.get('/api/my-campaigns', authMiddleware, async (req, res) => {
         res.json(campaigns);
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 
 // ─────────────────────────────────────────
 // API: Avatar
@@ -578,15 +607,11 @@ app.get('/api/export-excel', async (req, res) => {
         if (platform === 'tiktok' || platform === 'both') tiktokData = await Influencer.find(buildQuery('tiktok')).lean();
         if (platform === 'youtube' || platform === 'both') youtubeData = await Influencer.find(buildQuery('youtube')).lean();
 
-        // ✅ คำนวณ Per-Brand Rating /10 (เหมือน graph)
         const calcRawScore = (row) =>
-            (row.totalViews    || 0) * 0.1 +
-            (row.totalLikes    || 0) * 0.4 +
-            (row.totalComments || 0) * 0.3 +
-            (row.totalShares   || 0) * 0.2;
+            (row.totalViews || 0) * 0.1 + (row.totalLikes || 0) * 0.4 +
+            (row.totalComments || 0) * 0.3 + (row.totalShares || 0) * 0.2;
 
         const addRatings = (data) => {
-            // group by brand → หา maxRaw ของแต่ละ brand
             const brandMax = {};
             data.forEach(row => {
                 const brand = row.brand || 'Unknown';
@@ -610,12 +635,7 @@ app.get('/api/export-excel', async (req, res) => {
 
         const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3436' } };
         const HEADER_FONT = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-        const BORDER_THIN = {
-            top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-            left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-            bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-            right: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-        };
+        const BORDER_THIN = { top: { style: 'thin', color: { argb: 'FFD0D0D0' } }, left: { style: 'thin', color: { argb: 'FFD0D0D0' } }, bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } }, right: { style: 'thin', color: { argb: 'FFD0D0D0' } } };
         const TIKTOK_ACCENT  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF010101' } };
         const YOUTUBE_ACCENT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
 
@@ -639,10 +659,7 @@ app.get('/api/export-excel', async (req, res) => {
 
         const buildSheet = (name, data, accentFill) => {
             if (data.length === 0) return;
-            const sheet = workbook.addWorksheet(name, {
-                views: [{ state: 'frozen', ySplit: 2 }],
-                properties: { defaultRowHeight: 18 },
-            });
+            const sheet = workbook.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 2 }], properties: { defaultRowHeight: 18 } });
             sheet.mergeCells(1, 1, 1, COLUMNS.length);
             const titleCell = sheet.getCell('A1');
             const filterDesc = [keyword ? `keyword: "${keyword}"` : '', categories ? `categories: ${categories}` : ''].filter(Boolean).join(' | ');
@@ -654,37 +671,25 @@ app.get('/api/export-excel', async (req, res) => {
             sheet.columns = COLUMNS;
             const headerRow = sheet.getRow(2);
             headerRow.values = COLUMNS.map(c => c.header);
-            headerRow.eachCell(cell => {
-                cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
-                cell.alignment = { horizontal: 'center', vertical: 'middle' }; cell.border = BORDER_THIN;
-            });
+            headerRow.eachCell(cell => { cell.font = HEADER_FONT; cell.fill = HEADER_FILL; cell.alignment = { horizontal: 'center', vertical: 'middle' }; cell.border = BORDER_THIN; });
             headerRow.height = 22;
             data.forEach((row, idx) => {
                 const rowData = {};
                 COLUMNS.forEach(col => { rowData[col.key] = row[col.key] ?? ''; });
                 const r = sheet.addRow(rowData);
-                const rowFill = idx % 2 === 0
-                    ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } }
-                    : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-                r.eachCell({ includeEmpty: true }, cell => {
-                    cell.fill = rowFill; cell.border = BORDER_THIN;
-                    cell.font = { name: 'Arial', size: 10 }; cell.alignment = { vertical: 'middle' };
-                });
+                const rowFill = idx % 2 === 0 ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } } : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                r.eachCell({ includeEmpty: true }, cell => { cell.fill = rowFill; cell.border = BORDER_THIN; cell.font = { name: 'Arial', size: 10 }; cell.alignment = { vertical: 'middle' }; });
                 NUMERIC_KEYS.forEach(key => {
                     const colIdx = COLUMNS.findIndex(c => c.key === key);
                     if (colIdx === -1) return;
                     const cell = r.getCell(colIdx + 1);
                     cell.numFmt = '#,##0'; cell.alignment = { horizontal: 'right', vertical: 'middle' };
                 });
-                // ✅ Rating cell — color by score + center align
                 const ratingCell = r.getCell(RATING_COL_IDX);
                 const ratingVal = row.rating || 0;
                 ratingCell.numFmt = '0.00';
                 ratingCell.alignment = { horizontal: 'center', vertical: 'middle' };
-                ratingCell.font = {
-                    name: 'Arial', size: 10, bold: true,
-                    color: { argb: ratingVal >= 7.5 ? 'FF00b894' : ratingVal >= 5 ? 'FFe17055' : 'FFb2bec3' },
-                };
+                ratingCell.font = { name: 'Arial', size: 10, bold: true, color: { argb: ratingVal >= 7.5 ? 'FF00b894' : ratingVal >= 5 ? 'FFe17055' : 'FFb2bec3' } };
                 r.height = 18;
             });
             sheet.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: COLUMNS.length } };
@@ -717,15 +722,10 @@ app.get('/api/top-videos-by-brand', async (req, res) => {
             { $match: { authorName, platform, videoUrl: { $exists: true, $ne: '' } } },
             { $sort: { totalLikes: -1 } },
             { $group: {
-                _id:           '$brand',
-                brand:         { $first: '$brand' },
-                videoUrl:      { $first: '$videoUrl' },
-                totalLikes:    { $first: '$totalLikes' },
-                totalViews:    { $first: '$totalViews' },
-                totalComments: { $first: '$totalComments' },  // ✅
-                totalShares:   { $first: '$totalShares' },    // ✅
-                caption:       { $first: '$caption' },
-                category:      { $first: '$category' },
+                _id: '$brand', brand: { $first: '$brand' }, videoUrl: { $first: '$videoUrl' },
+                totalLikes: { $first: '$totalLikes' }, totalViews: { $first: '$totalViews' },
+                totalComments: { $first: '$totalComments' }, totalShares: { $first: '$totalShares' },
+                caption: { $first: '$caption' }, category: { $first: '$category' },
             }},
             { $sort: { totalLikes: -1 } },
             { $limit: 10 },
