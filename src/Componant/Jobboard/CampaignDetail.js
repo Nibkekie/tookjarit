@@ -28,6 +28,13 @@ function getTimeAgo(dateStr) {
     return new Date(dateStr).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// รูปอาจเป็น /uploads/... (uploaded) หรือ https://... (URL เดิม)
+function getImageUrl(img) {
+    if (!img) return '';
+    if (img.startsWith('http')) return img;
+    return `${API}${img}`;
+}
+
 function CampaignDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -103,11 +110,11 @@ function CampaignDetail() {
                     <div className="detail-main">
                         {hasImages && (
                             <div className="detail-gallery">
-                                <img src={c.images[currentImg]} alt={c.title} className="detail-main-image" onError={e => { e.target.style.display = 'none'; }} />
+                                <img src={getImageUrl(c.images[currentImg])} alt={c.title} className="detail-main-image" onError={e => { e.target.style.display = 'none'; }} />
                                 {c.images.length > 1 && (
                                     <div className="detail-thumbs">
                                         {c.images.map((img, i) => (
-                                            <img key={i} src={img} alt="" className={`detail-thumb ${i === currentImg ? 'active' : ''}`} onClick={() => setCurrentImg(i)} />
+                                            <img key={i} src={getImageUrl(img)} alt="" className={`detail-thumb ${i === currentImg ? 'active' : ''}`} onClick={() => setCurrentImg(i)} />
                                         ))}
                                     </div>
                                 )}
@@ -130,6 +137,7 @@ function CampaignDetail() {
 
                     {/* Sidebar */}
                     <div className="detail-sidebar">
+                        {/* Author */}
                         <div className="detail-side-card">
                             <div className="detail-author-row">
                                 <div className="campaign-card-avatar">{c.author?.name?.[0]?.toUpperCase() || '?'}</div>
@@ -139,15 +147,29 @@ function CampaignDetail() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* ── ช่องทางการติดต่อ ── */}
+                        {c.contact && (
+                            <div className="detail-side-card">
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#333', marginBottom: 8 }}>📞 ช่องทางการติดต่อ</div>
+                                <p style={{ fontSize: 13, color: '#555', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{c.contact}</p>
+                            </div>
+                        )}
+
+                        {/* Budget */}
                         {c.budget > 0 && (
                             <div className="detail-side-card">
                                 <div className="detail-budget-label">งบประมาณ</div>
                                 <div className="detail-budget-value">฿{c.budget.toLocaleString()}</div>
                             </div>
                         )}
+
+                        {/* Applicants */}
                         <div className="detail-side-card">
                             <div style={{ fontSize: 13, color: '#888' }}>👥 ผู้สนใจ {c.applicants?.length || 0} คน</div>
                         </div>
+
+                        {/* Apply */}
                         <div className="detail-side-card">
                             {applied ? (
                                 <div className="detail-applied-badge">✅ คุณสมัครแล้ว</div>

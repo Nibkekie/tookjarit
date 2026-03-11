@@ -10,12 +10,30 @@ const neo4j = require('neo4j-driver');
 const jwt = require('jsonwebtoken');
 const User = require('./User');
 const SearchHistory = require('./SearchHistory');
+const Campaign = require('./Campaign');
+const multer = require('multer');
+const path = require('path');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tookjarit-secret-key-2024';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const storage = multer.diskStorage({
+       destination: (req, file, cb) => cb(null, 'uploads/campaigns'),
+       filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s/g, '_'))
+  });
+   const uploadCampaignImages = multer({
+       storage,
+       limits: { fileSize: 5 * 1024 * 1024 },  // 5MB per file
+       fileFilter: (req, file, cb) => {
+          const allowed = /jpeg|jpg|png|gif|webp/;
+           const ok = allowed.test(path.extname(file.originalname).toLowerCase()) && allowed.test(file.mimetype);
+           cb(ok ? null : new Error('อนุญาตเฉพาะไฟล์รูปภาพเท่านั้น'), ok);
+       }
+   }).array('images', 5);
+   app.use('/uploads', express.static('uploads'));
 
 // --- Setup Clients ---
 const apifyClient = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
@@ -365,7 +383,34 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // ─────────────────────────────────────────
-// API: Campaign — CRUD
+// API: Favorites
+// ─────────────────────────────────────────
+app.post('/api/favorites/toggle', authMiddleware, async (req, res) => {
+    try {
+        const { influencerName, platform = 'tiktok' } = req.body;
+        const user = await User.findById(req.user.id);
+        const idx = user.favorites.findIndex(f => f.influencerName === influencerName);
+        if (idx === -1) {
+            user.favorites.push({ influencerName, platform });
+            await user.save();
+            res.json({ favorited: true, message: `เพิ่ม ${influencerName} แล้ว` });
+        } else {
+            user.favorites.splice(idx, 1);
+            await user.save();
+            res.json({ favorited: false, message: `ลบ ${influencerName} แล้ว` });
+        }
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.get('/api/favorites', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('favorites name');
+        res.json({ favorites: user.favorites, name: user.name });
+    } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────
+// API: Campaign
 // ─────────────────────────────────────────
 
 // ── LIST (public) ──
@@ -385,7 +430,10 @@ app.get('/api/campaigns', async (req, res) => {
             Campaign.countDocuments(filter),
         ]);
         res.json({ campaigns, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e) {
+        console.error('❌ GET /api/campaigns error:', e.message);
+        res.status(500).json({ message: e.message });
+    }
 });
 
 // ── DETAIL (public) ──
@@ -394,24 +442,50 @@ app.get('/api/campaigns/:id', async (req, res) => {
         const campaign = await Campaign.findById(req.params.id).lean();
         if (!campaign) return res.status(404).json({ message: 'ไม่พบแคมเปญนี้' });
         res.json(campaign);
-    } catch (e) { res.status(500).json({ message: e.message }); }
+    } catch (e) {
+        console.error('❌ GET /api/campaigns/:id error:', e.message);
+        res.status(500).json({ message: e.message });
+    }
 });
 
-// ── CREATE (ต้อง login) ──
-app.post('/api/campaigns', authMiddleware, async (req, res) => {
-    try {
-        const { title, description, budget, category, jobType, images } = req.body;
-        if (!title || !description || !category) {
-            return res.status(400).json({ message: 'กรุณากรอก ชื่องาน, รายละเอียด, และหมวดหมู่' });
+// ── CREATE (ต้อง login + upload รูป) ──
+app.post('/api/campaigns', authMiddleware, (req, res) => {
+    uploadCampaignImages(req, res, async (err) => {
+        if (err) {
+            console.error('❌ Upload error:', err.message);
+            return res.status(400).json({ message: err.message });
         }
-        const safeImages = Array.isArray(images) ? images.slice(0, 5) : [];
-        const campaign = await Campaign.create({
-            author: { userId: req.user.id, name: req.user.name, email: req.user.email },
-            title, description, budget: budget || 0, category,
-            jobType: jobType || 'freelance', images: safeImages, status: 'open',
-        });
-        res.status(201).json(campaign);
-    } catch (e) { res.status(500).json({ message: e.message }); }
+        try {
+            const { title, description, budget, category, jobType, contact } = req.body;
+
+            if (!title || !description || !category) {
+                return res.status(400).json({ message: 'กรุณากรอก ชื่องาน, รายละเอียด, และหมวดหมู่' });
+            }
+            if (!contact || !contact.trim()) {
+                return res.status(400).json({ message: 'กรุณากรอกช่องทางการติดต่อ' });
+            }
+
+            // รูปจาก multer upload
+            const imageFiles = req.files ? req.files.map(f => `/uploads/campaigns/${f.filename}`) : [];
+
+            const campaign = await Campaign.create({
+                author: { userId: req.user.id, name: req.user.name, email: req.user.email },
+                title, description,
+                budget: parseInt(budget) || 0,
+                category,
+                jobType: jobType || 'freelance',
+                contact: contact.trim(),
+                images: imageFiles,
+                status: 'open',
+            });
+
+            console.log('✅ Campaign created:', campaign.title);
+            res.status(201).json(campaign);
+        } catch (e) {
+            console.error('❌ POST /api/campaigns error:', e.message);
+            res.status(500).json({ message: e.message });
+        }
+    });
 });
 
 // ── UPDATE (เจ้าของเท่านั้น) ──
@@ -422,7 +496,7 @@ app.put('/api/campaigns/:id', authMiddleware, async (req, res) => {
         if (campaign.author.userId.toString() !== req.user.id) {
             return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขแคมเปญนี้' });
         }
-        const allowed = ['title', 'description', 'budget', 'category', 'jobType', 'images', 'status'];
+        const allowed = ['title', 'description', 'budget', 'category', 'jobType', 'images', 'status', 'contact'];
         allowed.forEach(key => { if (req.body[key] !== undefined) campaign[key] = req.body[key]; });
         await campaign.save();
         res.json(campaign);
@@ -461,33 +535,6 @@ app.get('/api/my-campaigns', authMiddleware, async (req, res) => {
     try {
         const campaigns = await Campaign.find({ 'author.userId': req.user.id }).sort({ createdAt: -1 }).lean();
         res.json(campaigns);
-    } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-// ─────────────────────────────────────────
-// API: Favorites
-// ─────────────────────────────────────────
-app.post('/api/favorites/toggle', authMiddleware, async (req, res) => {
-    try {
-        const { influencerName, platform = 'tiktok' } = req.body;
-        const user = await User.findById(req.user.id);
-        const idx = user.favorites.findIndex(f => f.influencerName === influencerName);
-        if (idx === -1) {
-            user.favorites.push({ influencerName, platform });
-            await user.save();
-            res.json({ favorited: true, message: `เพิ่ม ${influencerName} แล้ว` });
-        } else {
-            user.favorites.splice(idx, 1);
-            await user.save();
-            res.json({ favorited: false, message: `ลบ ${influencerName} แล้ว` });
-        }
-    } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-app.get('/api/favorites', authMiddleware, async (req, res) => {
-    try {
-        const user = await User.findById(req.user.id).select('favorites name');
-        res.json({ favorites: user.favorites, name: user.name });
     } catch (e) { res.status(500).json({ message: e.message }); }
 });
 

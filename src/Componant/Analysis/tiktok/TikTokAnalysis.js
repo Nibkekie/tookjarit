@@ -37,8 +37,6 @@ function calcRawScore(link) {
 }
 
 // ─── Per-Brand Normalized Rating /10 ─────────────────────────────────────────
-// Compare only within the same brand — fair regardless of search frequency
-// Best influencer for THIS brand = 10.0, others scale relatively
 function calcRating(link, allLinks) {
     const brandId = typeof link.target === 'object' ? link.target.id : link.target;
     const sameBrand = allLinks.filter(l => {
@@ -53,9 +51,9 @@ function calcRating(link, allLinks) {
 // ─── Link Width (based on raw score, global scale) ───────────────────────────
 function getLinkWidth(link, allLinks) {
     if (link.isPhantom) return 0;
-    if (!allLinks || allLinks.length === 0) return 1.5; // ← เพิ่ม
+    if (!allLinks || allLinks.length === 0) return 1.5;
     const rating = calcRating(link, allLinks);
-    return 1.5 + (rating / 10) * 6.5; // ลด max จาก 11.5 → 8px
+    return 1.5 + (rating / 10) * 6.5;
 }
 
 function fmtNum(n) {
@@ -76,7 +74,6 @@ function getTier(followers) {
 }
 
 // ─── Link Tooltip ─────────────────────────────────────────────────────────────
-// Always visible on link hover regardless of selected node/filter/category
 function LinkTooltip({ link, pos, allLinks }) {
     if (!link || !pos) return null;
 
@@ -108,38 +105,27 @@ function LinkTooltip({ link, pos, allLinks }) {
             fontFamily: "'Prompt', sans-serif",
             animation: 'tooltipIn 0.15s ease',
         }}>
-            {/* Header */}
             <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8, whiteSpace: 'nowrap' }}>
                 @{infName}
             </div>
-
-            {/* Brand */}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>🛍️ Brand</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{brandName}</span>
             </div>
-
-            {/* Rating — colored, per-brand comparison */}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>⭐ Rating</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: ratingColor }}>
                     {rating.toFixed(1)} / 10
                 </span>
             </div>
-
-            {/* Views */}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>👁️ Views</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{fmtNum(link.totalViews)}</span>
             </div>
-
-            {/* Engage */}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>❤️ Engage</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{fmtNum(engage)}</span>
             </div>
-
-            {/* Tier */}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 0 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>🎖️ Tier</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: tier.color }}>{tier.label}</span>
@@ -221,6 +207,7 @@ function TikTokAnalysis() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [konamiProgress]);
 
+    // ── Physics ────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!fgRef.current) return;
         fgRef.current.d3Force('charge', d3.forceManyBody().strength(-300));
@@ -229,6 +216,7 @@ function TikTokAnalysis() {
         fgRef.current.d3ReheatSimulation();
     }, [data, dimensions]);
 
+    // ── Resize ─────────────────────────────────────────────────────────────
     useEffect(() => {
         const update = () => {
             if (isFullScreen) {
@@ -237,15 +225,23 @@ function TikTokAnalysis() {
                 setDimensions({ width: containerRef.current.offsetWidth, height: containerRef.current.offsetHeight });
             }
         };
-        setTimeout(update, 150);
+        const resizeTimer = setTimeout(update, 150);
         window.addEventListener('resize', update);
-        return () => window.removeEventListener('resize', update);
+        return () => {
+            clearTimeout(resizeTimer);
+            window.removeEventListener('resize', update);
+        };
     }, [isFullScreen]);
 
+    // ── ✅ FIX: Auto Zoom Fit — เช็ค fgRef ข้างใน setTimeout + cleanup ───
     useEffect(() => {
-        if (fgRef.current) setTimeout(() => fgRef.current.zoomToFit(1000, 50), 800);
+        const timer = setTimeout(() => {
+            if (fgRef.current) fgRef.current.zoomToFit(1000, 50);
+        }, 800);
+        return () => clearTimeout(timer);
     }, [data]);
 
+    // ── ✅ FIX: Zoom to Category — รวมเป็นอันเดียว + cleanup ──────────────
     useEffect(() => {
         if (!selectedCategory || !fgRef.current || !data.nodes.length) return;
         const catNodes = data.nodes.filter(node => {
@@ -265,30 +261,35 @@ function TikTokAnalysis() {
         const avgY = catNodes.reduce((s, n) => s + (n.y || 0), 0) / catNodes.length;
         let maxD = 0;
         catNodes.forEach(n => { const d = Math.sqrt((n.x - avgX) ** 2 + (n.y - avgY) ** 2); if (d > maxD) maxD = d; });
-        setTimeout(() => {
-            fgRef.current.centerAt(avgX, avgY, 1000);
-            fgRef.current.zoom(Math.min(3, Math.max(1.2, 400 / (maxD + 100))), 400);
+        const timer = setTimeout(() => {
+            if (fgRef.current) {
+                fgRef.current.centerAt(avgX, avgY, 1000);
+                fgRef.current.zoom(Math.min(3, Math.max(1.2, 400 / (maxD + 100))), 400);
+            }
         }, 100);
+        return () => clearTimeout(timer);
     }, [selectedCategory, data]);
 
+    // ── ✅ FIX: Highlight from URL — เช็ค fgRef ข้างใน setTimeout ──────────
     useEffect(() => {
         const name = new URLSearchParams(location.search).get('highlight');
         if (!name || !data.nodes.length || !fgRef.current) return;
         const target = data.nodes.find(n => n.name === name);
         if (!target) return;
         setLocalFilter(name); setSelectedNode(target); setHoverNode(target); updateHighlights(target);
-        setTimeout(() => {
+        const timer = setTimeout(() => {
             if (fgRef.current && target.x != null) {
                 fgRef.current.centerAt(target.x, target.y, 1000);
                 fgRef.current.zoom(2, 900);
             }
         }, 800);
+        return () => clearTimeout(timer);
     }, [location.search, data.nodes]);
 
+    // ── Local Filter ──────────────────────────────────────────────────────
     useEffect(() => {
         if (!localFilter.trim()) { if (!selectedNode) clearHighlights(); return; }
 
-        // 1. หา node ตรงๆ ก่อน (influencer / brand name)
         const directMatch = data.nodes.find(n =>
             n.name.toLowerCase().includes(localFilter.toLowerCase())
         );
@@ -301,14 +302,12 @@ function TikTokAnalysis() {
             return;
         }
 
-        // 2. ถ้าไม่เจอ node ตรงๆ → ลองหาจาก category หรือ productType ใน links
         const relatedNodeIds = new Set();
         data.links.forEach(link => {
             const src = typeof link.source === 'object' ? link.source : data.nodes.find(n => n.id === link.source);
             const tgt = typeof link.target === 'object' ? link.target : data.nodes.find(n => n.id === link.target);
             if (!src || !tgt) return;
 
-            // ถ้า brand category ตรง หรือ brand name ตรง
             const brandNode = tgt.type === 'Brand' ? tgt : src.type === 'Brand' ? src : null;
             const infNode = src.type === 'Influencer' ? src : tgt.type === 'Influencer' ? tgt : null;
 
@@ -316,30 +315,28 @@ function TikTokAnalysis() {
                 relatedNodeIds.add(brandNode.id);
                 if (infNode) relatedNodeIds.add(infNode.id);
             }
-        }, [localFilter, data.nodes, data.links]);
+        });
 
         if (relatedNodeIds.size > 0 && fgRef.current) {
             const relatedNodes = data.nodes.filter(n => relatedNodeIds.has(n.id));
             const avgX = relatedNodes.reduce((s, n) => s + (n.x || 0), 0) / relatedNodes.length;
             const avgY = relatedNodes.reduce((s, n) => s + (n.y || 0), 0) / relatedNodes.length;
-            // highlight nodes ที่เกี่ยวข้อง
             updateHighlights({ id: null, _relatedIds: relatedNodeIds });
             fgRef.current.centerAt(avgX, avgY, 1000);
             fgRef.current.zoom(1.5, 1000);
         }
     }, [localFilter, data.nodes, data.links]);
 
-    // ── Hover Node — ไม่มี NodeTooltip แล้ว แค่ highlight ─────────────────────
+    // ── Hover Node ────────────────────────────────────────────────────────
     const handleNodeHover = useCallback((node, prevNode, event) => {
         if (selectedNode || localFilter) return;
         setHoverNode(node || null);
         updateHighlights(node);
-        // ซ่อน link tooltip เมื่อ hover node
         setHoverLink(null);
         setLinkTooltipPos(null);
     }, [selectedNode, localFilter, updateHighlights]);
 
-    // ── Hover Link — แสดง tooltip เสมอ ไม่ว่าจะเลือก filter/category อะไร ──
+    // ── Hover Link ────────────────────────────────────────────────────────
     const handleLinkHover = useCallback((link, prevLink, event) => {
         if (link && !link.isPhantom) {
             setHoverLink(link);
@@ -353,7 +350,7 @@ function TikTokAnalysis() {
         }
     }, []);
 
-    // ── Mouse Move — follow cursor ────────────────────────────────────────────
+    // ── Mouse Move — follow cursor ────────────────────────────────────────
     useEffect(() => {
         const canvas = containerRef.current?.querySelector('canvas');
         if (!canvas) return;
@@ -366,6 +363,7 @@ function TikTokAnalysis() {
         return () => canvas.removeEventListener('mousemove', onMove);
     }, [hoverLink]);
 
+    // ── ✅ FIX: Node Click — เช็ค fgRef ก่อนเรียก ────────────────────────
     const handleNodeClick = (node) => {
         const n = node === selectedNode ? null : node;
         setSelectedNode(n); setHoverNode(n); updateHighlights(n); setLocalFilter('');
@@ -375,6 +373,8 @@ function TikTokAnalysis() {
             else fgRef.current.zoomToFit(1000, 50);
         }
     };
+
+    // ── ✅ FIX: Background Click — เช็ค fgRef ก่อนเรียก ──────────────────
     const handleBackgroundClick = () => {
         setSelectedNode(null); setLocalFilter('');
         clearHighlights();
@@ -382,7 +382,7 @@ function TikTokAnalysis() {
         if (fgRef.current) fgRef.current.zoomToFit(1000);
     };
 
-    // ── Paint Node ────────────────────────────────────────────────────────────
+    // ── Paint Node ────────────────────────────────────────────────────────
     const paintNode = useCallback((node, ctx, globalScale) => {
         const isHover = hoverNode === node;
         const isSelected = selectedNode === node;
@@ -452,7 +452,7 @@ function TikTokAnalysis() {
     }, [hoverNode, selectedNode, highlightNodes, selectedCategory, data.links,
         localFilter, easterEggActive, loadAvatarForNode, imgCache]);
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // ── Render ────────────────────────────────────────────────────────────
     return (
         <div className="analysis-page">
             <style>{`@keyframes tooltipIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }`}</style>
@@ -483,7 +483,7 @@ function TikTokAnalysis() {
                     <div className="legend-title">🎨 COLOR LEGEND — คลิกเพื่อกรอง</div>
                     <div className="legend-pills">
                         <div className={`legend-pill ${selectedCategory === '' ? 'selected' : ''}`}
-                            onClick={() => { setSelectedCategory(''); fgRef.current?.zoomToFit(1000, 50); }}>
+                            onClick={() => { setSelectedCategory(''); if (fgRef.current) fgRef.current.zoomToFit(1000, 50); }}>
                             <div className="legend-dot" style={{ background: '#f0f0f0', border: '1.5px solid #ccc' }} />
                             All
                         </div>
@@ -492,7 +492,7 @@ function TikTokAnalysis() {
                                 className={`legend-pill ${selectedCategory === cat.name ? 'selected' : ''}`}
                                 onClick={() => {
                                     setSelectedCategory(prev => prev === cat.name ? '' : cat.name);
-                                    if (selectedCategory === cat.name) fgRef.current?.zoomToFit(1000, 50);
+                                    if (selectedCategory === cat.name && fgRef.current) fgRef.current.zoomToFit(1000, 50);
                                 }}>
                                 <div className="legend-dot" style={{ background: cat.color }} />
                                 {cat.name}
@@ -507,12 +507,12 @@ function TikTokAnalysis() {
                         setLocalFilter={setLocalFilter}
                         onRefresh={() => { loadGraphData(); setLocalFilter(''); setSelectedCategory(''); }}
                         platform="tiktok"
-                        onSelectCategory={(cat) => {          // ← เพิ่มบรรทัดนี้
+                        onSelectCategory={(cat) => {
                             setSelectedCategory(cat);
                             setLocalFilter('');
                         }}
                     />
-                
+
                     <div className="graph-outer">
                         <NodePopupCard
                             node={selectedNode}
@@ -537,7 +537,6 @@ function TikTokAnalysis() {
                                 {isFullScreen ? '✖️' : '⤢'}
                             </button>
 
-                            {/* Link Tooltip — แสดงตลอดเมื่อ hover เส้น */}
                             <LinkTooltip link={hoverLink} pos={linkTooltipPos} allLinks={data.links} />
 
                             <ForceGraph2D
@@ -555,7 +554,7 @@ function TikTokAnalysis() {
                                 linkWidth={link => {
                                     if (link.isPhantom) return 0;
                                     const width = getLinkWidth(link, data.links);
-                                    return isNaN(width) ? 1.5 : Math.min(width, 8); // cap ที่ 8px ป้องกัน
+                                    return isNaN(width) ? 1.5 : Math.min(width, 8);
                                 }}
                                 linkHoverPrecision={8}
                                 nodeCanvasObject={paintNode}

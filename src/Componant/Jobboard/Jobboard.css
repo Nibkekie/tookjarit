@@ -138,3 +138,25 @@
     .jobboard-grid { grid-template-columns: 1fr; }
     .create-category-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }
+/* ── Upload Button ── */
+.create-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 14px;
+    border: 1.5px dashed #ccc;
+    background: #fafafa;
+    color: #666;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: 'Prompt', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 8px;
+}
+.create-upload-btn:hover {
+    border-color: #ff4757;
+    color: #ff4757;
+    background: #fff5f5;
+}

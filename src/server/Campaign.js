@@ -2,20 +2,23 @@
 const mongoose = require('mongoose');
 
 const CampaignSchema = new mongoose.Schema({
-    // ── ผู้โพสต์ ──
     author: {
         userId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         name:     { type: String, required: true },
         email:    { type: String, default: '' },
     },
-
-    // ── ข้อมูลแคมเปญ ──
     title:       { type: String, required: true, maxlength: 120 },
     description: { type: String, required: true, maxlength: 3000 },
     budget:      { type: Number, default: 0 },
     currency:    { type: String, default: 'THB' },
 
-    // ── หมวดหมู่ ──
+    // ── ช่องทางการติดต่อ (บังคับกรอก) ──
+    contact: {
+        type: String,
+        required: true,
+        maxlength: 500,
+    },
+
     category: {
         type: String,
         enum: [
@@ -26,32 +29,26 @@ const CampaignSchema = new mongoose.Schema({
         ],
         required: true,
     },
-
-    // ── ลักษณะการจ้าง ──
     jobType: {
         type: String,
         enum: ['freelance', 'contract', 'parttime'],
         default: 'freelance',
     },
 
-    // ── รูปภาพ (URL) สูงสุด 5 รูป ──
+    // ── รูปภาพ (เก็บ path ไฟล์ที่อัปโหลด) สูงสุด 5 รูป ──
     images: [{ type: String }],
 
-    // ── สถานะ ──
     status: {
         type: String,
         enum: ['open', 'closed', 'draft'],
         default: 'open',
     },
-
-    // ── ผู้สมัคร ──
     applicants: [{
         userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         name:      { type: String },
         appliedAt: { type: Date, default: Date.now },
         message:   { type: String, default: '' },
     }],
-
 }, { timestamps: true });
 
 CampaignSchema.index({ status: 1, createdAt: -1 });

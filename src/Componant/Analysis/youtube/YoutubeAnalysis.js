@@ -117,8 +117,11 @@ function YoutubeAnalysis() {
 
     // ── Auto Zoom Fit ──────────────────────────────────────────────────────
     useEffect(() => {
-        if (fgRef.current) setTimeout(() => fgRef.current.zoomToFit(1000, 50), 800);
-    }, [data]);
+    const timer = setTimeout(() => {
+        if (fgRef.current) fgRef.current.zoomToFit(1000, 50);
+    }, 800);
+    return () => clearTimeout(timer);
+}, [data]);
 
     // ── Zoom to Category ───────────────────────────────────────────────────
     useEffect(() => {
