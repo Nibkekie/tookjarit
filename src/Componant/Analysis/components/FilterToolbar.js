@@ -8,7 +8,8 @@ const STALE_DAYS = 7;
 const TYPE_CONFIG = {
     influencer: { icon: '👤', color: '#2d3436', bg: '#f0f0f0' },
     brand:      { icon: '🏷️', color: '#0984e3', bg: '#e3f2fd' },
-    category:   { icon: '📁', color: '#6c5ce7', bg: '#ede7f6' },
+    category:   { icon: '📂', color: '#6c5ce7', bg: '#ede7f6' },
+    product:    { icon: '🔖', color: '#00b894', bg: '#f0fff8' },
 };
 
 function daysSince(dateStr) {
@@ -24,7 +25,7 @@ function formatRelative(dateStr) {
     return `${diff} วันที่แล้ว`;
 }
 
-function FilterToolbar({ localFilter, setLocalFilter, onRefresh, platform }) {
+function FilterToolbar({ localFilter, setLocalFilter, onRefresh, platform = 'tiktok', onSelectCategory }){
     const [suggestions,  setSuggestions]  = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const [activeIdx,    setActiveIdx]    = useState(-1);
@@ -62,17 +63,22 @@ function FilterToolbar({ localFilter, setLocalFilter, onRefresh, platform }) {
         setActiveIdx(-1);
         if (!val.trim()) { setSuggestions([]); setShowDropdown(false); return; }
         try {
-            const r = await fetch(`${API}/api/autocomplete?q=${encodeURIComponent(val)}&platform=${platform || 'tiktok'}`);
+            const r = await fetch(`${API}/api/suggestions?q=${encodeURIComponent(val)}&platform=${platform || 'tiktok'}`);
             const d = await r.json();
-            setSuggestions(d.suggestions || []);
-            setShowDropdown((d.suggestions || []).length > 0);
+            setSuggestions(Array.isArray(d) ? d : []);
+            setShowDropdown(Array.isArray(d) && d.length > 0);
         } catch { setSuggestions([]); }
     };
 
     const handleSelect = (item) => {
-        setLocalFilter(item.display);
+        if (item.type === 'category' && onSelectCategory) {
+            onSelectCategory(item.label); // ← ส่งไปให้ parent
+        } else {
+            setLocalFilter(item.label);
+        }
         setSuggestions([]);
         setShowDropdown(false);
+        setActiveIdx(-1);
     };
 
     const handleKeyDown = (e) => {
@@ -144,9 +150,9 @@ function FilterToolbar({ localFilter, setLocalFilter, onRefresh, platform }) {
                                         className="ft-dropdown__badge"
                                         style={{ color: cfg.color, background: cfg.bg }}
                                     >
-                                        {cfg.icon} {item.type === 'influencer' ? 'Influencer' : item.type === 'brand' ? 'Brand' : 'Category'}
+                                        {cfg.icon} {item.type === 'influencer' ? 'Influencer' : item.type === 'brand' ? 'Brand' : item.type === 'category' ? 'Category' : 'สินค้า'}
                                     </span>
-                                    <span className="ft-dropdown__label">{item.display}</span>
+                                    <span className="ft-dropdown__label">{item.label}</span>
                                 </div>
                             );
                         })}

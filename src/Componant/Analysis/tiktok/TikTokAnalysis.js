@@ -4,12 +4,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ForceGraph2D from 'react-force-graph-2d';
 import * as d3 from 'd3';
 
-import { useGraphData }   from './useGraphData';
-import { useHighlight }   from '../hooks/useHighlight';
+import { useGraphData } from './useGraphData';
+import { useHighlight } from '../hooks/useHighlight';
 import { useAvatarCache } from '../hooks/useAvatarCache';
-import NodePopupCard      from './NodePopupCard';
-import FilterToolbar      from '../components/FilterToolbar';
-import LoadingOverlay     from '../../LoadingOverlay';
+import NodePopupCard from './NodePopupCard';
+import FilterToolbar from '../components/FilterToolbar';
+import LoadingOverlay from '../../LoadingOverlay';
 import { CATEGORIES, CATEGORY_COLOR_MAP } from '../constants/categories';
 
 const API = 'http://localhost:5000';
@@ -29,10 +29,10 @@ function getNodeSize(node) {
 // ─── Raw Score (Weighted Engagement) ─────────────────────────────────────────
 function calcRawScore(link) {
     return (
-        (link.totalViews    || 0) * 0.1 +
-        (link.totalLikes    || 0) * 0.4 +
+        (link.totalViews || 0) * 0.1 +
+        (link.totalLikes || 0) * 0.4 +
         (link.totalComments || 0) * 0.3 +
-        (link.totalShares   || 0) * 0.2
+        (link.totalShares || 0) * 0.2
     );
 }
 
@@ -53,25 +53,26 @@ function calcRating(link, allLinks) {
 // ─── Link Width (based on raw score, global scale) ───────────────────────────
 function getLinkWidth(link, allLinks) {
     if (link.isPhantom) return 0;
-    const rating = calcRating(link, allLinks);  // 0-10
-    return 1.5 + (rating / 10) * 10;  // min 1.5px, max 11.5px
+    if (!allLinks || allLinks.length === 0) return 1.5; // ← เพิ่ม
+    const rating = calcRating(link, allLinks);
+    return 1.5 + (rating / 10) * 6.5; // ลด max จาก 11.5 → 8px
 }
 
 function fmtNum(n) {
     if (!n || n === 0) return '-';
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-    if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
     return n.toLocaleString();
 }
 
 function getTier(followers) {
     if (!followers) return { label: 'Unknown', color: '#b2bec3' };
-    if (followers >= 1_000_000) return { label: '👑 Mega',     color: '#6c5ce7' };
-    if (followers >= 100_000)   return { label: '🔥 Macro',    color: '#e17055' };
-    if (followers >= 50_000)    return { label: '⚡ Mid-Tier', color: '#f39c12' };
-    if (followers >= 10_000)    return { label: '✨ Micro',    color: '#00b894' };
-    if (followers >= 1_000)     return { label: '🌱 Nano',     color: '#74b9ff' };
-    return { label: '🔰 New',   color: '#b2bec3' };
+    if (followers >= 1_000_000) return { label: '👑 Mega', color: '#6c5ce7' };
+    if (followers >= 100_000) return { label: '🔥 Macro', color: '#e17055' };
+    if (followers >= 50_000) return { label: '⚡ Mid-Tier', color: '#f39c12' };
+    if (followers >= 10_000) return { label: '✨ Micro', color: '#00b894' };
+    if (followers >= 1_000) return { label: '🌱 Nano', color: '#74b9ff' };
+    return { label: '🔰 New', color: '#b2bec3' };
 }
 
 // ─── Link Tooltip ─────────────────────────────────────────────────────────────
@@ -80,32 +81,32 @@ function LinkTooltip({ link, pos, allLinks }) {
     if (!link || !pos) return null;
 
     const followers = typeof link.source === 'object' ? link.source.followers : 0;
-    const tier      = getTier(followers);
-    const rating    = calcRating(link, allLinks);
+    const tier = getTier(followers);
+    const rating = calcRating(link, allLinks);
     const brandName = typeof link.target === 'object' ? link.target.name : link.target;
-    const infName   = typeof link.source === 'object' ? link.source.name : link.source;
-    const engage    = (link.totalLikes || 0) + (link.totalComments || 0);
+    const infName = typeof link.source === 'object' ? link.source.name : link.source;
+    const engage = (link.totalLikes || 0) + (link.totalComments || 0);
 
     const ratingColor = rating >= 7.5 ? '#00b894'
         : rating >= 5 ? '#f39c12'
-        : '#e17055';
+            : '#e17055';
 
     return (
         <div style={{
-            position:      'absolute',
-            left:          pos.x + 16,
-            top:           pos.y - 10,
-            background:    'rgba(15,15,25,0.92)',
-            backdropFilter:'blur(8px)',
-            border:        '1px solid rgba(255,255,255,0.12)',
-            borderRadius:  14,
-            padding:       '10px 14px',
-            minWidth:      175,
+            position: 'absolute',
+            left: pos.x + 16,
+            top: pos.y - 10,
+            background: 'rgba(15,15,25,0.92)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 14,
+            padding: '10px 14px',
+            minWidth: 175,
             pointerEvents: 'none',
-            zIndex:        99999,
-            boxShadow:     '0 8px 32px rgba(0,0,0,0.35)',
-            fontFamily:    "'Prompt', sans-serif",
-            animation:     'tooltipIn 0.15s ease',
+            zIndex: 99999,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            fontFamily: "'Prompt', sans-serif",
+            animation: 'tooltipIn 0.15s ease',
         }}>
             {/* Header */}
             <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8, whiteSpace: 'nowrap' }}>
@@ -152,29 +153,29 @@ function TikTokAnalysis() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const fgRef        = useRef();
+    const fgRef = useRef();
     const containerRef = useRef();
 
     const { data, isLoading, loadGraphData, searchTikTok } = useGraphData();
     const { highlightNodes, highlightLinks, hoverNode, setHoverNode, updateHighlights, clearHighlights } = useHighlight(data.links);
     const { imgCache, loadAvatarForNode } = useAvatarCache(fgRef);
 
-    const [dimensions, setDimensions]             = useState({ width: 800, height: 600 });
-    const [isFullScreen, setIsFullScreen]         = useState(false);
-    const [selectedNode, setSelectedNode]         = useState(null);
-    const [globalSearch, setGlobalSearch]         = useState('');
-    const [localFilter, setLocalFilter]           = useState('');
+    const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+    const [isFullScreen, setIsFullScreen] = useState(false);
+    const [selectedNode, setSelectedNode] = useState(null);
+    const [globalSearch, setGlobalSearch] = useState('');
+    const [localFilter, setLocalFilter] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('');
 
-    const [hoverLink, setHoverLink]           = useState(null);
+    const [hoverLink, setHoverLink] = useState(null);
     const [linkTooltipPos, setLinkTooltipPos] = useState(null);
 
-    const [favorites, setFavorites]   = useState(new Set());
+    const [favorites, setFavorites] = useState(new Set());
     const [favLoading, setFavLoading] = useState(false);
 
-    const [konamiProgress, setKonamiProgress]   = useState(0);
+    const [konamiProgress, setKonamiProgress] = useState(0);
     const [easterEggActive, setEasterEggActive] = useState(false);
-    const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+    const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
 
     useEffect(() => { loadGraphData(); }, [loadGraphData]);
 
@@ -184,7 +185,7 @@ function TikTokAnalysis() {
         fetch(`${API}/api/favorites`, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
             .then(d => { if (d.favorites) setFavorites(new Set(d.favorites.map(f => f.influencerName))); })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     const handleToggleFavorite = async (influencerName) => {
@@ -254,7 +255,7 @@ function TikTokAnalysis() {
                     const src = typeof l.source === 'object' ? l.source : data.nodes.find(n => n.id === l.source);
                     const tgt = typeof l.target === 'object' ? l.target : data.nodes.find(n => n.id === l.target);
                     return (src?.id === node.id && tgt?.category === selectedCategory) ||
-                           (tgt?.id === node.id && src?.category === selectedCategory);
+                        (tgt?.id === node.id && src?.category === selectedCategory);
                 });
             }
             return false;
@@ -279,20 +280,54 @@ function TikTokAnalysis() {
         setTimeout(() => {
             if (fgRef.current && target.x != null) {
                 fgRef.current.centerAt(target.x, target.y, 1000);
-                fgRef.current.zoom(3, 1000);
+                fgRef.current.zoom(2, 900);
             }
         }, 800);
     }, [location.search, data.nodes]);
 
     useEffect(() => {
         if (!localFilter.trim()) { if (!selectedNode) clearHighlights(); return; }
-        const match = data.nodes.find(n => n.name.toLowerCase().includes(localFilter.toLowerCase()));
-        if (match && fgRef.current) {
-            setHoverNode(match); updateHighlights(match);
-            fgRef.current.centerAt(match.x, match.y, 1000);
+
+        // 1. หา node ตรงๆ ก่อน (influencer / brand name)
+        const directMatch = data.nodes.find(n =>
+            n.name.toLowerCase().includes(localFilter.toLowerCase())
+        );
+
+        if (directMatch && fgRef.current) {
+            setHoverNode(directMatch);
+            updateHighlights(directMatch);
+            fgRef.current.centerAt(directMatch.x, directMatch.y, 1000);
             fgRef.current.zoom(3, 1000);
+            return;
         }
-    }, [localFilter, data.nodes]);
+
+        // 2. ถ้าไม่เจอ node ตรงๆ → ลองหาจาก category หรือ productType ใน links
+        const relatedNodeIds = new Set();
+        data.links.forEach(link => {
+            const src = typeof link.source === 'object' ? link.source : data.nodes.find(n => n.id === link.source);
+            const tgt = typeof link.target === 'object' ? link.target : data.nodes.find(n => n.id === link.target);
+            if (!src || !tgt) return;
+
+            // ถ้า brand category ตรง หรือ brand name ตรง
+            const brandNode = tgt.type === 'Brand' ? tgt : src.type === 'Brand' ? src : null;
+            const infNode = src.type === 'Influencer' ? src : tgt.type === 'Influencer' ? tgt : null;
+
+            if (brandNode && brandNode.category?.toLowerCase().includes(localFilter.toLowerCase())) {
+                relatedNodeIds.add(brandNode.id);
+                if (infNode) relatedNodeIds.add(infNode.id);
+            }
+        }, [localFilter, data.nodes, data.links]);
+
+        if (relatedNodeIds.size > 0 && fgRef.current) {
+            const relatedNodes = data.nodes.filter(n => relatedNodeIds.has(n.id));
+            const avgX = relatedNodes.reduce((s, n) => s + (n.x || 0), 0) / relatedNodes.length;
+            const avgY = relatedNodes.reduce((s, n) => s + (n.y || 0), 0) / relatedNodes.length;
+            // highlight nodes ที่เกี่ยวข้อง
+            updateHighlights({ id: null, _relatedIds: relatedNodeIds });
+            fgRef.current.centerAt(avgX, avgY, 1000);
+            fgRef.current.zoom(1.5, 1000);
+        }
+    }, [localFilter, data.nodes, data.links]);
 
     // ── Hover Node — ไม่มี NodeTooltip แล้ว แค่ highlight ─────────────────────
     const handleNodeHover = useCallback((node, prevNode, event) => {
@@ -349,12 +384,12 @@ function TikTokAnalysis() {
 
     // ── Paint Node ────────────────────────────────────────────────────────────
     const paintNode = useCallback((node, ctx, globalScale) => {
-        const isHover    = hoverNode === node;
+        const isHover = hoverNode === node;
         const isSelected = selectedNode === node;
         const isNeighbor = highlightNodes.has(node.id);
-        const isInf      = node.type === 'Influencer';
-        const radius     = getNodeSize(node);
-        const color      = getNodeColor(node);
+        const isInf = node.type === 'Influencer';
+        const radius = getNodeSize(node);
+        const color = getNodeColor(node);
 
         let alpha = 1;
         if (selectedCategory) {
@@ -472,8 +507,12 @@ function TikTokAnalysis() {
                         setLocalFilter={setLocalFilter}
                         onRefresh={() => { loadGraphData(); setLocalFilter(''); setSelectedCategory(''); }}
                         platform="tiktok"
+                        onSelectCategory={(cat) => {          // ← เพิ่มบรรทัดนี้
+                            setSelectedCategory(cat);
+                            setLocalFilter('');
+                        }}
                     />
-
+                
                     <div className="graph-outer">
                         <NodePopupCard
                             node={selectedNode}
@@ -513,7 +552,11 @@ function TikTokAnalysis() {
                                     if (selectedCategory) return (link.source?.category === selectedCategory || link.target?.category === selectedCategory) ? '#a5a5a5' : 'rgba(200,200,200,0.1)';
                                     return highlightLinks.has(link) ? '#333' : 'rgba(200,200,200,0.1)';
                                 }}
-                                linkWidth={link => link.isPhantom ? 0 : getLinkWidth(link, data.links)}
+                                linkWidth={link => {
+                                    if (link.isPhantom) return 0;
+                                    const width = getLinkWidth(link, data.links);
+                                    return isNaN(width) ? 1.5 : Math.min(width, 8); // cap ที่ 8px ป้องกัน
+                                }}
                                 linkHoverPrecision={8}
                                 nodeCanvasObject={paintNode}
                                 nodePointerAreaPaint={(node, color, ctx) => {

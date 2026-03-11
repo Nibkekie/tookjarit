@@ -177,23 +177,33 @@ app.get('/api/suggestions', async (req, res) => {
     ];
 
     try {
-        const [influencers, brands] = await Promise.all([
-            Influencer.distinct('authorName', { platform, authorName: regex }),
-            Influencer.distinct('brand',      { platform, brand:      regex }),
+        const [influencers, brands, productTypes] = await Promise.all([
+            Influencer.distinct('authorName',  { platform, authorName:  regex }),
+            Influencer.distinct('brand',       { platform, brand:       regex }),
+            Influencer.distinct('productType', { platform, productType: regex }),
         ]);
 
+        const SKIP_BRANDS = ['Unknown', 'No Brand', 'No Brand Name'];
         const filteredBrands = brands.filter(b =>
-            b && !CATEGORY_LIST.includes(b) && !['Unknown', 'No Brand', 'No Brand Name'].includes(b)
+            b && !CATEGORY_LIST.includes(b) && !SKIP_BRANDS.includes(b)
+        );
+
+        // ← ตรงนี้สำคัญ: match category จาก list โดยตรง
+        const matchedCategories = CATEGORY_LIST.filter(c => regex.test(c));
+
+        const filteredProductTypes = productTypes.filter(p =>
+            p && !['Unknown', 'unknown', ''].includes(p)
         );
 
         const results = [
-            ...influencers    .slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
-            ...filteredBrands .slice(0, 5).map(v => ({ type: 'brand',      label: v, display: v })),
+            ...influencers         .slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
+            ...filteredBrands      .slice(0, 4).map(v => ({ type: 'brand',      label: v, display: v })),
+            ...matchedCategories   .slice(0, 3).map(v => ({ type: 'category',   label: v, display: v })),
+            ...filteredProductTypes.slice(0, 3).map(v => ({ type: 'product',    label: v, display: v })),
         ];
         res.json(results);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 // ─────────────────────────────────────────
 // API: Graph Data ✅ เพิ่ม totalComments + totalShares + profileLikes
 // ─────────────────────────────────────────
