@@ -8,7 +8,6 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cors = require('cors');
 const neo4j = require('neo4j-driver');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const User = require('./User');
 const SearchHistory = require('./SearchHistory');
 
@@ -278,14 +277,13 @@ app.get('/api/graph-data', async (req, res) => {
 });
 
 // ─────────────────────────────────────────
-// API: Sync MongoDB → Neo4j ✅ เพิ่ม totalComments + totalShares + profileLikes
+// API: Sync MongoDB → Neo4j 
 // ─────────────────────────────────────────
 app.get('/api/sync-mongo-to-neo4j', async (req, res) => {
     try {
         const influencers = await Influencer.find({});
         const session = driver.session();
         try {
-            // ✅ FIX 3: sync-mongo-to-neo4j — เพิ่ม totalComments + totalShares
             await session.run(`
                 UNWIND $batch AS row
                 MERGE (i:Influencer {name: row.authorName})
@@ -552,7 +550,7 @@ app.get('/api/export-excel', async (req, res) => {
 });
 
 // ─────────────────────────────────────────
-// API: Top Videos by Brand ✅ เพิ่ม totalComments + totalShares
+// API: Top Videos by Brand
 // ─────────────────────────────────────────
 app.get('/api/top-videos-by-brand', async (req, res) => {
     const { authorName, platform = 'tiktok' } = req.query;
