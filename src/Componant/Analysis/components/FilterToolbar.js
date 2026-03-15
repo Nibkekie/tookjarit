@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ExportButton from './ExportButton';
 
-const API = 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || '';
 const STALE_DAYS = 7;
 
 const TYPE_CONFIG = {

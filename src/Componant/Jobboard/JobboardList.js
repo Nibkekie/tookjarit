@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import CampaignCard from './CampaignCard';
 import './Jobboard.css';
 
-const API = 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || '';
 
 const CATEGORIES = [
     'Fashion', 'Beauty & Personal Care', 'Health & Wellness',

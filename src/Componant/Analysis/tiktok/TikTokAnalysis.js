@@ -12,7 +12,7 @@ import FilterToolbar from '../components/FilterToolbar';
 import LoadingOverlay from '../../LoadingOverlay';
 import { CATEGORIES, CATEGORY_COLOR_MAP } from '../constants/categories';
 
-const API = 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || '';
 const PLATFORM_COLOR = '#1a1a2e';
 
 // ─── Node Helpers ─────────────────────────────────────────────────────────────

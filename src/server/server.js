@@ -1,5 +1,5 @@
 // server.js
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const Influencer = require('./Influencer');
@@ -990,5 +990,15 @@ app.get('/api/last-refreshed', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
  
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+// ── Serve React Build (Production) ──
+if (process.env.NODE_ENV === 'production') {
+    const buildPath = path.join(__dirname, '..', '..', 'build');
+    app.use(express.static(buildPath));
+    app.get('*', (req, res) => {
+        if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+            res.sendFile(path.join(buildPath, 'index.html'));
+        }
+    });
+}
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
