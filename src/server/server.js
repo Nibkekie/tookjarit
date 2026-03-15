@@ -14,13 +14,13 @@ const Campaign = require('./Campaign');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-              // ✅ FIX: เพิ่ม fs
+// ✅ FIX: เพิ่ม fs
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tookjarit-secret-key-2024';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // ✅ FIX: สร้างโฟลเดอร์ uploads/campaigns อัตโนมัติถ้ายังไม่มี
 const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'campaigns');
@@ -68,6 +68,7 @@ const uploadCampaignImages = multer({
 
 // --- Setup Clients ---
 const apifyClient = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+const apifyRefreshClient = new ApifyClient({ token: process.env.APIFY_REFRESH_TOKEN || process.env.APIFY_API_TOKEN });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const driver = neo4j.driver(
     process.env.NEO4J_URI,
@@ -154,6 +155,7 @@ app.post('/api/search-tiktok', async (req, res) => {
                 authorAvatar: item.authorMeta?.avatar || "", followers: item.authorMeta?.fans || 0,
                 profileLikes: item.authorMeta?.heart || 0,
                 platform: 'tiktok', caption: item.text || "", videoUrl: item.webVideoUrl || "",
+                textLanguage: item.textLanguage || '',
                 totalViews: item.playCount || 0, totalLikes: item.diggCount || 0,
                 totalComments: item.commentCount || 0, totalShares: item.shareCount || 0,
                 brand: analysis.brand || "Unknown", productType: analysis.product_type || "Unknown",
@@ -226,8 +228,8 @@ app.get('/api/suggestions', async (req, res) => {
 
     try {
         const [influencers, brands, productTypes] = await Promise.all([
-            Influencer.distinct('authorName',  { platform, authorName:  regex }),
-            Influencer.distinct('brand',       { platform, brand:       regex }),
+            Influencer.distinct('authorName', { platform, authorName: regex }),
+            Influencer.distinct('brand', { platform, brand: regex }),
             Influencer.distinct('productType', { platform, productType: regex }),
         ]);
 
@@ -237,10 +239,10 @@ app.get('/api/suggestions', async (req, res) => {
         const filteredProductTypes = productTypes.filter(p => p && !['Unknown', 'unknown', ''].includes(p));
 
         const results = [
-            ...influencers         .slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
-            ...filteredBrands      .slice(0, 4).map(v => ({ type: 'brand',      label: v, display: v })),
-            ...matchedCategories   .slice(0, 3).map(v => ({ type: 'category',   label: v, display: v })),
-            ...filteredProductTypes.slice(0, 3).map(v => ({ type: 'product',    label: v, display: v })),
+            ...influencers.slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
+            ...filteredBrands.slice(0, 4).map(v => ({ type: 'brand', label: v, display: v })),
+            ...matchedCategories.slice(0, 3).map(v => ({ type: 'category', label: v, display: v })),
+            ...filteredProductTypes.slice(0, 3).map(v => ({ type: 'product', label: v, display: v })),
         ];
         res.json(results);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -251,8 +253,20 @@ app.get('/api/suggestions', async (req, res) => {
 // ─────────────────────────────────────────
 app.get('/api/graph-data', async (req, res) => {
     const platform = req.query.platform || 'tiktok';
+    const thaiOnly = req.query.thaiOnly === 'true';
     const session = driver.session();
     try {
+        // ✅ ถ้า thaiOnly → หา influencer ที่มีโพสต์ภาษาไทยจาก MongoDB ก่อน
+        let thaiInfluencerNames = null;
+        if (thaiOnly) {
+            const thaiRegex = /[\u0E00-\u0E7F]/;  // ตัวอักษรไทย ก-๙
+            const allInfluencers = await Influencer.find({ platform }).select('authorName textLanguage caption').lean();
+            const thaiNames = allInfluencers
+                .filter(inf => inf.textLanguage === 'th' || thaiRegex.test(inf.caption || ''))
+                .map(inf => inf.authorName);
+            thaiInfluencerNames = new Set(thaiNames);
+        }
+
         const result = await session.run(`
             MATCH (i:Influencer)-[r:POSTED_ABOUT]->(b:Brand)
             WHERE i.platform = $platform
@@ -269,10 +283,13 @@ app.get('/api/graph-data', async (req, res) => {
             const r = rec.get('r');
             const iId = i.elementId;
 
-            const rViews    = r.properties.totalViews?.low    ?? r.properties.totalViews    ?? 0;
-            const rLikes    = r.properties.totalLikes?.low    ?? r.properties.totalLikes    ?? 0;
+            // ✅ thaiOnly → ข้ามถ้า influencer ไม่มีโพสต์ไทย
+            if (thaiInfluencerNames && !thaiInfluencerNames.has(i.properties.name)) return;
+
+            const rViews = r.properties.totalViews?.low ?? r.properties.totalViews ?? 0;
+            const rLikes = r.properties.totalLikes?.low ?? r.properties.totalLikes ?? 0;
             const rComments = r.properties.totalComments?.low ?? r.properties.totalComments ?? 0;
-            const rShares   = r.properties.totalShares?.low   ?? r.properties.totalShares   ?? 0;
+            const rShares = r.properties.totalShares?.low ?? r.properties.totalShares ?? 0;
 
             if (!influencerStats[iId]) influencerStats[iId] = { totalLikes: 0, totalViews: 0 };
             influencerStats[iId].totalLikes += rLikes;
@@ -407,7 +424,7 @@ app.get('/api/debug-uploads', (req, res) => {
     const campaigns = path.join(root, 'campaigns');
     let files = [];
     try { if (fs.existsSync(campaigns)) files = fs.readdirSync(campaigns); }
-    catch(e) { files = ['ERROR: ' + e.message]; }
+    catch (e) { files = ['ERROR: ' + e.message]; }
 
     res.json({
         __dirname,
@@ -626,7 +643,7 @@ app.get('/api/export-excel', async (req, res) => {
             });
         };
 
-        if (tiktokData.length)  tiktokData  = addRatings(tiktokData);
+        if (tiktokData.length) tiktokData = addRatings(tiktokData);
         if (youtubeData.length) youtubeData = addRatings(youtubeData);
 
         const workbook = new ExcelJS.Workbook();
@@ -636,23 +653,23 @@ app.get('/api/export-excel', async (req, res) => {
         const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3436' } };
         const HEADER_FONT = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
         const BORDER_THIN = { top: { style: 'thin', color: { argb: 'FFD0D0D0' } }, left: { style: 'thin', color: { argb: 'FFD0D0D0' } }, bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } }, right: { style: 'thin', color: { argb: 'FFD0D0D0' } } };
-        const TIKTOK_ACCENT  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF010101' } };
+        const TIKTOK_ACCENT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF010101' } };
         const YOUTUBE_ACCENT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
 
         const COLUMNS = [
-            { header: 'Author Name',    key: 'authorName',    width: 22 },
-            { header: 'Followers',      key: 'followers',     width: 14 },
-            { header: 'Brand',          key: 'brand',         width: 22 },
-            { header: 'Rating /10',     key: 'rating',        width: 12 },
-            { header: 'Product Type',   key: 'productType',   width: 24 },
-            { header: 'Category',       key: 'category',      width: 20 },
-            { header: 'Caption',        key: 'caption',       width: 50 },
-            { header: 'Total Views',    key: 'totalViews',    width: 14 },
-            { header: 'Total Likes',    key: 'totalLikes',    width: 14 },
+            { header: 'Author Name', key: 'authorName', width: 22 },
+            { header: 'Followers', key: 'followers', width: 14 },
+            { header: 'Brand', key: 'brand', width: 22 },
+            { header: 'Rating /10', key: 'rating', width: 12 },
+            { header: 'Product Type', key: 'productType', width: 24 },
+            { header: 'Category', key: 'category', width: 20 },
+            { header: 'Caption', key: 'caption', width: 50 },
+            { header: 'Total Views', key: 'totalViews', width: 14 },
+            { header: 'Total Likes', key: 'totalLikes', width: 14 },
             { header: 'Total Comments', key: 'totalComments', width: 16 },
-            { header: 'Total Shares',   key: 'totalShares',   width: 14 },
-            { header: 'Video URL',      key: 'videoUrl',      width: 40 },
-            { header: 'Platform',       key: 'platform',      width: 12 },
+            { header: 'Total Shares', key: 'totalShares', width: 14 },
+            { header: 'Video URL', key: 'videoUrl', width: 40 },
+            { header: 'Platform', key: 'platform', width: 12 },
         ];
         const NUMERIC_KEYS = ['followers', 'totalViews', 'totalLikes', 'totalComments', 'totalShares'];
         const RATING_COL_IDX = COLUMNS.findIndex(c => c.key === 'rating') + 1;
@@ -721,12 +738,14 @@ app.get('/api/top-videos-by-brand', async (req, res) => {
         const results = await Influencer.aggregate([
             { $match: { authorName, platform, videoUrl: { $exists: true, $ne: '' } } },
             { $sort: { totalLikes: -1 } },
-            { $group: {
-                _id: '$brand', brand: { $first: '$brand' }, videoUrl: { $first: '$videoUrl' },
-                totalLikes: { $first: '$totalLikes' }, totalViews: { $first: '$totalViews' },
-                totalComments: { $first: '$totalComments' }, totalShares: { $first: '$totalShares' },
-                caption: { $first: '$caption' }, category: { $first: '$category' },
-            }},
+            {
+                $group: {
+                    _id: '$brand', brand: { $first: '$brand' }, videoUrl: { $first: '$videoUrl' },
+                    totalLikes: { $first: '$totalLikes' }, totalViews: { $first: '$totalViews' },
+                    totalComments: { $first: '$totalComments' }, totalShares: { $first: '$totalShares' },
+                    caption: { $first: '$caption' }, category: { $first: '$category' },
+                }
+            },
             { $sort: { totalLikes: -1 } },
             { $limit: 10 },
         ]);
@@ -737,5 +756,239 @@ app.get('/api/top-videos-by-brand', async (req, res) => {
     }
 });
 
+// ─────────────────────────────────────────
+// API: Import TikTok JSON (จากไฟล์ Apify ที่โหลดไว้)
+// ─────────────────────────────────────────
+app.post('/api/import-tiktok-json', async (req, res) => {
+    const { items: rawItems, thaiOnly = false } = req.body;
+    if (!rawItems || !Array.isArray(rawItems) || rawItems.length === 0) {
+        return res.status(400).json({ error: "กรุณาส่ง items array มาด้วย" });
+    }
+    console.log(`📥 Import TikTok JSON: ${rawItems.length} items | thaiOnly: ${thaiOnly}`);
+    try {
+        const items = thaiOnly ? rawItems.filter(item => item.textLanguage === 'th') : rawItems;
+        if (items.length === 0) return res.status(404).json({ message: "ไม่พบโพสต์ภาษาไทยในไฟล์นี้" });
+
+        const BATCH_SIZE = 15;
+        let allAnalysis = [];
+        for (let start = 0; start < items.length; start += BATCH_SIZE) {
+            const batch = items.slice(start, start + BATCH_SIZE);
+            const dataForAI = batch.map(item => ({ id: item.id, text: item.text, author_name: item.authorMeta?.name || "Unknown" }));
+            const prompt = `Analyze TikTok captions. Input: ${JSON.stringify(dataForAI)}
+            Tasks:
+            1. brand: Extract Brand Name (if specific brand is not found, use "No Brand").
+            2. product_type: Identify the specific object and **Translate to Thai**.
+            3. main_category: Choose ONE best category from: Fashion, Beauty & Personal Care, Health & Wellness, Food & Beverage, Mom & Kids, IT & Gadgets, Home & Living, Toys & Collectibles, Pet, Automotive, Lifestyle
+            Output: JSON Array ONLY. No markdown. Preserve "id".
+            Structure: [{ "id": "...", "brand": "...", "product_type": "...", "main_category": "..." }]`;
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const result = await model.generateContent(prompt);
+            const parsed = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
+            allAnalysis = allAnalysis.concat(parsed);
+            console.log(`   🤖 Gemini batch ${Math.floor(start / BATCH_SIZE) + 1}: ${parsed.length} analyzed`);
+        }
+
+        const processedData = items.map(item => {
+            const analysis = allAnalysis.find(a => a.id === item.id) || {};
+            return {
+                videoId: item.id, authorName: item.authorMeta?.name || "Unknown",
+                authorAvatar: item.authorMeta?.avatar || "", followers: item.authorMeta?.fans || 0,
+                profileLikes: item.authorMeta?.heart || 0,
+                platform: 'tiktok', caption: item.text || "", videoUrl: item.webVideoUrl || "",
+                textLanguage: item.textLanguage || '',
+                totalViews: item.playCount || 0, totalLikes: item.diggCount || 0,
+                totalComments: item.commentCount || 0, totalShares: item.shareCount || 0,
+                brand: analysis.brand || "Unknown", productType: analysis.product_type || "Unknown",
+                category: analysis.main_category || "Lifestyle"
+            };
+        });
+
+        try { await Influencer.insertMany(processedData, { ordered: false }); }
+        catch (e) { if (e.code !== 11000) console.error(e); }
+
+        const session = driver.session();
+        try {
+            await session.run(`
+                UNWIND $batch AS row
+                MERGE (i:Influencer {name: row.authorName})
+                ON CREATE SET i.followers = row.followers, i.authorAvatar = row.authorAvatar, i.platform = row.platform, i.profileLikes = row.profileLikes
+                ON MATCH SET  i.followers = row.followers, i.authorAvatar = row.authorAvatar, i.platform = row.platform, i.profileLikes = row.profileLikes
+                MERGE (b:Brand {name: row.finalBrand})
+                ON CREATE SET b.category = row.category
+                ON MATCH SET  b.category = row.category
+                MERGE (i)-[r:POSTED_ABOUT]->(b)
+                ON CREATE SET r.weight = 1, r.totalViews = row.totalViews, r.totalLikes = row.totalLikes, r.totalComments = row.totalComments, r.totalShares = row.totalShares
+                ON MATCH SET  r.weight = r.weight + 1, r.totalViews = COALESCE(r.totalViews,0) + row.totalViews, r.totalLikes = COALESCE(r.totalLikes,0) + row.totalLikes, r.totalComments = COALESCE(r.totalComments,0) + row.totalComments, r.totalShares = COALESCE(r.totalShares,0) + row.totalShares
+            `, { batch: processedData.map(d => ({ ...d, finalBrand: getDisplayBrand(d.brand, d.productType) })) });
+        } finally { await session.close(); }
+
+        console.log(`✅ Import done: ${processedData.length} items`);
+        res.json({ message: `นำเข้า ${processedData.length} รายการสำเร็จ`, imported: processedData.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────
+// API: Refresh Influencer Stats (อัพเดตยอด followers/likes/views จาก TikTok)
+// ─────────────────────────────────────────
+app.post('/api/refresh-stats', async (req, res) => {
+    const { maxVideos = 100, staleDays = 30 } = req.body || {};
+    const staleDate = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000);
+ 
+    console.log(`🔄 Refresh Stats | maxVideos: ${maxVideos} | staleDays: ${staleDays}`);
+ 
+    try {
+        // 1. หาคลิปที่ยังไม่เคย sync หรือ sync เกิน X วัน
+        const staleVideos = await Influencer.find({
+            platform: 'tiktok',
+            videoUrl: { $exists: true, $ne: '' },
+            $or: [
+                { lastSynced: null },
+                { lastSynced: { $lt: staleDate } },
+            ]
+        })
+        .sort({ lastSynced: 1 })
+        .limit(maxVideos)
+        .select('videoUrl videoId authorName')
+        .lean();
+ 
+        if (staleVideos.length === 0) {
+            return res.json({ message: 'ทุกคลิปอัพเดตแล้ว ไม่มีอะไรต้อง refresh', refreshed: 0 });
+        }
+ 
+        console.log(`   📋 พบ ${staleVideos.length} คลิปที่ต้องอัพเดต`);
+ 
+        // 2. Scrape ด้วย postURLs — ตรง videoId 100%
+        const BATCH_SIZE = 20;  // Apify รับ URL ได้หลายอันต่อ call
+        let totalUpdated = 0;
+ 
+        for (let i = 0; i < staleVideos.length; i += BATCH_SIZE) {
+            const batch = staleVideos.slice(i, i + BATCH_SIZE);
+            const postURLs = batch.map(v => v.videoUrl);
+ 
+            console.log(`   🔎 Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} URLs`);
+ 
+            try {
+                const input = {
+                    postURLs,
+                    resultsPerPage: 1,
+                    shouldDownloadCovers: false,
+                    shouldDownloadSlideshowImages: false,
+                    shouldDownloadSubtitles: false,
+                    shouldDownloadVideos: false,
+                };
+                const run = await apifyRefreshClient.actor("clockworks/free-tiktok-scraper").call(input);
+                const { items } = await apifyRefreshClient.dataset(run.defaultDatasetId).listItems();
+ 
+                if (!items || items.length === 0) {
+                    console.log(`   ⚠️ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ไม่ได้ data`);
+                    continue;
+                }
+ 
+                // 3. อัพเดต MongoDB — ยอดคลิป + followers/avatar
+                for (const item of items) {
+                    const authorName = item.authorMeta?.name;
+                    if (!authorName) continue;
+ 
+                    // อัพเดต followers/avatar ทุก record ของ influencer นี้
+                    await Influencer.updateMany(
+                        { authorName, platform: 'tiktok' },
+                        {
+                            $set: {
+                                followers: item.authorMeta?.fans || 0,
+                                profileLikes: item.authorMeta?.heart || 0,
+                                authorAvatar: item.authorMeta?.avatar || '',
+                                lastSynced: new Date(),
+                            }
+                        }
+                    );
+ 
+                    // อัพเดตยอดคลิปตรง videoId
+                    if (item.id) {
+                        await Influencer.updateOne(
+                            { videoId: item.id, platform: 'tiktok' },
+                            {
+                                $set: {
+                                    totalViews: item.playCount || 0,
+                                    totalLikes: item.diggCount || 0,
+                                    totalComments: item.commentCount || 0,
+                                    totalShares: item.shareCount || 0,
+                                    textLanguage: item.textLanguage || '',
+                                }
+                            }
+                        );
+                        totalUpdated++;
+                    }
+                }
+ 
+                console.log(`   ✅ Batch done: ${items.length} items updated`);
+ 
+            } catch (batchErr) {
+                console.error(`   ❌ Batch error:`, batchErr.message);
+            }
+        }
+ 
+        // 4. Sync ไป Neo4j
+        if (totalUpdated > 0) {
+            const updatedNames = [...new Set(staleVideos.map(v => v.authorName))];
+            const freshData = await Influencer.find({
+                authorName: { $in: updatedNames },
+                platform: 'tiktok',
+            });
+ 
+            const session = driver.session();
+            try {
+                await session.run(`
+                    UNWIND $batch AS row
+                    MERGE (i:Influencer {name: row.authorName})
+                    SET i.followers = row.followers, i.authorAvatar = row.authorAvatar,
+                        i.profileLikes = row.profileLikes
+                    WITH i, row
+                    MERGE (b:Brand {name: row.finalBrand})
+                    MERGE (i)-[r:POSTED_ABOUT]->(b)
+                    SET r.totalViews = row.totalViews, r.totalLikes = row.totalLikes,
+                        r.totalComments = row.totalComments, r.totalShares = row.totalShares
+                `, {
+                    batch: freshData.map(inf => ({
+                        authorName: inf.authorName,
+                        authorAvatar: inf.authorAvatar || '',
+                        followers: inf.followers || 0,
+                        profileLikes: inf.profileLikes || 0,
+                        totalViews: inf.totalViews || 0,
+                        totalLikes: inf.totalLikes || 0,
+                        totalComments: inf.totalComments || 0,
+                        totalShares: inf.totalShares || 0,
+                        finalBrand: getDisplayBrand(inf.brand, inf.productType),
+                    }))
+                });
+            } finally { await session.close(); }
+        }
+ 
+        console.log(`🔄 Refresh done: ${totalUpdated}/${staleVideos.length} clips updated`);
+        res.json({
+            message: `อัพเดตสำเร็จ ${totalUpdated} คลิป`,
+            refreshed: totalUpdated,
+            total: staleVideos.length,
+        });
+ 
+    } catch (e) {
+        console.error('❌ Refresh error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─────────────────────────────────────────
+// API: Last Refreshed (วันที่อัพเดตยอดล่าสุด)
+// ─────────────────────────────────────────
+app.get('/api/last-refreshed', async (req, res) => {
+    const platform = req.query.platform || 'tiktok';
+    try {
+        const latest = await Influencer.findOne({ platform, lastSynced: { $ne: null } })
+            .sort({ lastSynced: -1 })
+            .select('lastSynced')
+            .lean();
+        res.json({ lastRefreshed: latest?.lastSynced || null });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
