@@ -433,7 +433,7 @@ app.get('/api/debug-uploads', (req, res) => {
         uploadsExists: fs.existsSync(root),
         campaignsDirExists: fs.existsSync(campaigns),
         files,
-        sampleUrl: files[0] ? `http://localhost:5000/uploads/campaigns/${files[0]}` : 'no files'
+        sampleUrl: files[0] ? `/uploads/campaigns/${files[0]}` : 'no files'
     });
 });
 

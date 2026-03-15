@@ -21,7 +21,7 @@ const thaiCount = all.filter(d => d.textLanguage === 'th').length;
 console.log('รวม ' + all.length + ' items (Thai: ' + thaiCount + ')');
 console.log('กำลังส่งไป server...');
 
-fetch('http://localhost:5000/api/import-tiktok-json', {
+fetch('/api/import-tiktok-json', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items: all, thaiOnly: false })

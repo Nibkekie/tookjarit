@@ -6,7 +6,7 @@ const STALE_DAYS = 30;   // อัพเดตถ้าเกิน 30 วัน
 
 console.log(`🔄 Refreshing stats (max ${MAX_VIDEOS} clips, stale > ${STALE_DAYS} days)...`);
 
-fetch('http://localhost:5000/api/refresh-stats', {
+fetch('/api/refresh-stats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ maxVideos: MAX_VIDEOS, staleDays: STALE_DAYS }),

@@ -12,7 +12,7 @@ function Favorites() {
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (!token) { navigate('/login'); return; }
-        fetch('http://localhost:5000/api/favorites', {
+        fetch('/api/favorites', {
             headers: { Authorization: `Bearer ${token}` },
         })
             .then(r => r.json())
@@ -24,7 +24,7 @@ function Favorites() {
                 const avatarMap = {};
                 await Promise.all(favs.map(async fav => {
                     try {
-                        const r = await fetch(`http://localhost:5000/api/avatar/${encodeURIComponent(fav.influencerName)}`);
+                        const r = await fetch(`/api/avatar/${encodeURIComponent(fav.influencerName)}`);
                         const d = await r.json();
                         if (d.avatar) avatarMap[fav.influencerName] = d.avatar;
                     } catch {}
@@ -37,7 +37,7 @@ function Favorites() {
 
     const removeFavorite = async (influencerName) => {
         const token = localStorage.getItem('token');
-        await fetch('http://localhost:5000/api/favorites/toggle', {
+        await fetch('/api/favorites/toggle', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ influencerName }),
