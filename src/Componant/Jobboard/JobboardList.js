@@ -63,15 +63,41 @@ function JobboardList() {
                         <h1 className="jobboard-title">📋 Jobboard</h1>
                         <p className="jobboard-subtitle">ค้นหาแคมเปญจากแบรนด์ · รับงานรีวิว · โปรโมทสินค้า</p>
                     </div>
-                    {isLoggedIn ? (
-                        <button className="jobboard-create-btn" onClick={() => navigate('/jobboard/create')}>
-                            + โพสต์แคมเปญ
-                        </button>
-                    ) : (
-                        <button className="jobboard-create-btn jobboard-create-btn--disabled" onClick={() => navigate('/login')}>
-                            เข้าสู่ระบบเพื่อโพสต์
-                        </button>
-                    )}
+
+                    {/* ✅ ปุ่มฝั่งขวา */}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        {/* ✅ แสดงเฉพาะตอน login */}
+                        {isLoggedIn && (
+                            <button
+                                className="jobboard-create-btn"
+                                onClick={() => navigate('/jobboard/my')}
+                                style={{
+                                    background: '#fff',
+                                    border: '1.5px solid rgba(255,255,255,0.5)',
+                                    backdropFilter: 'blur(4px)',
+                                    
+                                }}
+                            >
+                                📌 แคมเปญของฉัน
+                            </button>
+                        )}
+
+                        {isLoggedIn ? (
+                            <button
+                                className="jobboard-create-btn"
+                                onClick={() => navigate('/jobboard/create')}
+                            >
+                                + โพสต์แคมเปญ
+                            </button>
+                        ) : (
+                            <button
+                                className="jobboard-create-btn jobboard-create-btn--disabled"
+                                onClick={() => navigate('/login')}
+                            >
+                                เข้าสู่ระบบเพื่อโพสต์
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 

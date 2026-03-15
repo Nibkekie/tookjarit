@@ -1,5 +1,5 @@
 // server.js
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const Influencer = require('./Influencer');
@@ -14,7 +14,8 @@ const Campaign = require('./Campaign');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-// ✅ FIX: เพิ่ม fs
+const crypto = require('crypto');       // ✅ NEW: สำหรับ reset token
+const nodemailer = require('nodemailer'); // ✅ NEW: สำหรับส่ง email
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tookjarit-secret-key-2024';
 
@@ -228,8 +229,8 @@ app.get('/api/suggestions', async (req, res) => {
 
     try {
         const [influencers, brands, productTypes] = await Promise.all([
-            Influencer.distinct('authorName', { platform, authorName: regex }),
-            Influencer.distinct('brand', { platform, brand: regex }),
+            Influencer.distinct('authorName',  { platform, authorName:  regex }),
+            Influencer.distinct('brand',       { platform, brand:       regex }),
             Influencer.distinct('productType', { platform, productType: regex }),
         ]);
 
@@ -239,10 +240,10 @@ app.get('/api/suggestions', async (req, res) => {
         const filteredProductTypes = productTypes.filter(p => p && !['Unknown', 'unknown', ''].includes(p));
 
         const results = [
-            ...influencers.slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
-            ...filteredBrands.slice(0, 4).map(v => ({ type: 'brand', label: v, display: v })),
-            ...matchedCategories.slice(0, 3).map(v => ({ type: 'category', label: v, display: v })),
-            ...filteredProductTypes.slice(0, 3).map(v => ({ type: 'product', label: v, display: v })),
+            ...influencers         .slice(0, 5).map(v => ({ type: 'influencer', label: v, display: `@${v}` })),
+            ...filteredBrands      .slice(0, 4).map(v => ({ type: 'brand',      label: v, display: v })),
+            ...matchedCategories   .slice(0, 3).map(v => ({ type: 'category',   label: v, display: v })),
+            ...filteredProductTypes.slice(0, 3).map(v => ({ type: 'product',    label: v, display: v })),
         ];
         res.json(results);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -256,7 +257,8 @@ app.get('/api/graph-data', async (req, res) => {
     const thaiOnly = req.query.thaiOnly === 'true';
     const session = driver.session();
     try {
-        // ✅ ถ้า thaiOnly → หา influencer ที่มีโพสต์ภาษาไทยจาก MongoDB ก่อน
+        // ✅ ถ้า thaiOnly → หา influencer ที่มีโพสต์ภาษาไทยจาก MongoDB
+        // เช็ค 2 เงื่อนไข: textLanguage = 'th' หรือ caption มีตัวอักษรไทย
         let thaiInfluencerNames = null;
         if (thaiOnly) {
             const thaiRegex = /[\u0E00-\u0E7F]/;  // ตัวอักษรไทย ก-๙
@@ -286,10 +288,10 @@ app.get('/api/graph-data', async (req, res) => {
             // ✅ thaiOnly → ข้ามถ้า influencer ไม่มีโพสต์ไทย
             if (thaiInfluencerNames && !thaiInfluencerNames.has(i.properties.name)) return;
 
-            const rViews = r.properties.totalViews?.low ?? r.properties.totalViews ?? 0;
-            const rLikes = r.properties.totalLikes?.low ?? r.properties.totalLikes ?? 0;
+            const rViews    = r.properties.totalViews?.low    ?? r.properties.totalViews    ?? 0;
+            const rLikes    = r.properties.totalLikes?.low    ?? r.properties.totalLikes    ?? 0;
             const rComments = r.properties.totalComments?.low ?? r.properties.totalComments ?? 0;
-            const rShares = r.properties.totalShares?.low ?? r.properties.totalShares ?? 0;
+            const rShares   = r.properties.totalShares?.low   ?? r.properties.totalShares   ?? 0;
 
             if (!influencerStats[iId]) influencerStats[iId] = { totalLikes: 0, totalViews: 0 };
             influencerStats[iId].totalLikes += rLikes;
@@ -382,10 +384,122 @@ app.post('/api/auth/login', async (req, res) => {
         const { email, password } = req.body;
         const user = await User.findOne({ email });
         if (!user) return res.status(400).json({ message: 'ไม่พบอีเมลนี้ในระบบ' });
+        if (!user.password) return res.status(400).json({ message: 'บัญชีนี้ใช้ Google Login กรุณาเข้าสู่ระบบด้วย Google' });
         if (!(await user.comparePassword(password))) return res.status(400).json({ message: 'รหัสผ่านไม่ถูกต้อง' });
         const token = jwt.sign({ id: user._id, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
         res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
     } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ─────────────────────────────────────────
+// API: Google Login
+// ─────────────────────────────────────────
+app.post('/api/auth/google', async (req, res) => {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ message: 'ไม่พบข้อมูล Google' });
+    try {
+        // Decode Google JWT token
+        const decoded = JSON.parse(Buffer.from(credential.split('.')[1], 'base64').toString());
+        const { sub: googleId, email, name, picture } = decoded;
+
+        if (!email) return res.status(400).json({ message: 'ไม่สามารถดึงอีเมลจาก Google ได้' });
+
+        // หา user หรือสร้างใหม่
+        let user = await User.findOne({ $or: [{ googleId }, { email }] });
+        if (user) {
+            // อัพเดต googleId ถ้ายังไม่มี
+            if (!user.googleId) { user.googleId = googleId; await user.save(); }
+        } else {
+            // สร้าง user ใหม่ (ไม่มี password)
+            user = await User.create({ name, email, googleId });
+        }
+
+        const token = jwt.sign({ id: user._id, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    } catch (e) {
+        console.error('❌ Google login error:', e.message);
+        res.status(500).json({ message: 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ' });
+    }
+});
+
+// ─────────────────────────────────────────
+// API: Forgot Password (ส่ง email reset link)
+// ─────────────────────────────────────────
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'กรุณากรอกอีเมล' });
+    try {
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).json({ message: 'ไม่พบอีเมลนี้ในระบบ' });
+        if (!user.password && user.googleId) return res.status(400).json({ message: 'บัญชีนี้ใช้ Google Login ไม่จำเป็นต้อง reset รหัสผ่าน' });
+
+        // สร้าง reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+        user.resetPasswordExpires = Date.now() + 30 * 60 * 1000; // 30 นาที
+        await user.save();
+
+        // ส่ง email
+        const appUrl = process.env.APP_URL || 'http://localhost:3000';
+        const resetUrl = `${appUrl}/reset-password/${resetToken}`;
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.SMTP_EMAIL,
+                pass: process.env.SMTP_PASSWORD,
+            },
+        });
+
+        await transporter.sendMail({
+            from: `"TookJaRit" <${process.env.SMTP_EMAIL}>`,
+            to: email,
+            subject: '🔑 รีเซ็ตรหัสผ่าน TookJaRit',
+            html: `
+                <div style="font-family: 'Prompt', sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; background: #fff; border-radius: 16px; border: 1px solid #f0f0f0;">
+                    <h2 style="color: #1a1a2e; margin-bottom: 10px;">🔑 รีเซ็ตรหัสผ่าน</h2>
+                    <p style="color: #666; font-size: 14px;">คุณได้ขอรีเซ็ตรหัสผ่านสำหรับบัญชี TookJaRit</p>
+                    <a href="${resetUrl}" style="display: inline-block; margin: 20px 0; padding: 14px 32px; background: #ff4757; color: #fff; text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 14px;">ตั้งรหัสผ่านใหม่</a>
+                    <p style="color: #999; font-size: 12px;">ลิงก์นี้จะหมดอายุใน 30 นาที</p>
+                    <p style="color: #ccc; font-size: 11px; margin-top: 20px;">ถ้าคุณไม่ได้ขอรีเซ็ตรหัสผ่าน กรุณาเพิกเฉยอีเมลนี้</p>
+                </div>
+            `,
+        });
+
+        console.log(`📧 Reset email sent to ${email}`);
+        res.json({ message: 'ส่งลิงก์รีเซ็ตรหัสผ่านไปที่อีเมลแล้ว' });
+    } catch (e) {
+        console.error('❌ Forgot password error:', e.message);
+        res.status(500).json({ message: 'ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่' });
+    }
+});
+
+// ─────────────────────────────────────────
+// API: Reset Password (ตั้งรหัสผ่านใหม่)
+// ─────────────────────────────────────────
+app.post('/api/auth/reset-password', async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ message: 'ข้อมูลไม่ครบ' });
+    if (password.length < 6) return res.status(400).json({ message: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+    try {
+        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({
+            resetPasswordToken: hashedToken,
+            resetPasswordExpires: { $gt: Date.now() },
+        });
+        if (!user) return res.status(400).json({ message: 'ลิงก์หมดอายุหรือไม่ถูกต้อง กรุณาขอรีเซ็ตใหม่' });
+
+        user.password = password;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save();
+
+        console.log(`✅ Password reset for ${user.email}`);
+        res.json({ message: 'เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่' });
+    } catch (e) {
+        console.error('❌ Reset password error:', e.message);
+        res.status(500).json({ message: e.message });
+    }
 });
 
 // ─────────────────────────────────────────
@@ -424,7 +538,7 @@ app.get('/api/debug-uploads', (req, res) => {
     const campaigns = path.join(root, 'campaigns');
     let files = [];
     try { if (fs.existsSync(campaigns)) files = fs.readdirSync(campaigns); }
-    catch (e) { files = ['ERROR: ' + e.message]; }
+    catch(e) { files = ['ERROR: ' + e.message]; }
 
     res.json({
         __dirname,
@@ -433,7 +547,7 @@ app.get('/api/debug-uploads', (req, res) => {
         uploadsExists: fs.existsSync(root),
         campaignsDirExists: fs.existsSync(campaigns),
         files,
-        sampleUrl: files[0] ? `/uploads/campaigns/${files[0]}` : 'no files'
+        sampleUrl: files[0] ? `http://localhost:5000/uploads/campaigns/${files[0]}` : 'no files'
     });
 });
 
@@ -643,7 +757,7 @@ app.get('/api/export-excel', async (req, res) => {
             });
         };
 
-        if (tiktokData.length) tiktokData = addRatings(tiktokData);
+        if (tiktokData.length)  tiktokData  = addRatings(tiktokData);
         if (youtubeData.length) youtubeData = addRatings(youtubeData);
 
         const workbook = new ExcelJS.Workbook();
@@ -653,23 +767,23 @@ app.get('/api/export-excel', async (req, res) => {
         const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3436' } };
         const HEADER_FONT = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
         const BORDER_THIN = { top: { style: 'thin', color: { argb: 'FFD0D0D0' } }, left: { style: 'thin', color: { argb: 'FFD0D0D0' } }, bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } }, right: { style: 'thin', color: { argb: 'FFD0D0D0' } } };
-        const TIKTOK_ACCENT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF010101' } };
+        const TIKTOK_ACCENT  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF010101' } };
         const YOUTUBE_ACCENT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
 
         const COLUMNS = [
-            { header: 'Author Name', key: 'authorName', width: 22 },
-            { header: 'Followers', key: 'followers', width: 14 },
-            { header: 'Brand', key: 'brand', width: 22 },
-            { header: 'Rating /10', key: 'rating', width: 12 },
-            { header: 'Product Type', key: 'productType', width: 24 },
-            { header: 'Category', key: 'category', width: 20 },
-            { header: 'Caption', key: 'caption', width: 50 },
-            { header: 'Total Views', key: 'totalViews', width: 14 },
-            { header: 'Total Likes', key: 'totalLikes', width: 14 },
+            { header: 'Author Name',    key: 'authorName',    width: 22 },
+            { header: 'Followers',      key: 'followers',     width: 14 },
+            { header: 'Brand',          key: 'brand',         width: 22 },
+            { header: 'Rating /10',     key: 'rating',        width: 12 },
+            { header: 'Product Type',   key: 'productType',   width: 24 },
+            { header: 'Category',       key: 'category',      width: 20 },
+            { header: 'Caption',        key: 'caption',       width: 50 },
+            { header: 'Total Views',    key: 'totalViews',    width: 14 },
+            { header: 'Total Likes',    key: 'totalLikes',    width: 14 },
             { header: 'Total Comments', key: 'totalComments', width: 16 },
-            { header: 'Total Shares', key: 'totalShares', width: 14 },
-            { header: 'Video URL', key: 'videoUrl', width: 40 },
-            { header: 'Platform', key: 'platform', width: 12 },
+            { header: 'Total Shares',   key: 'totalShares',   width: 14 },
+            { header: 'Video URL',      key: 'videoUrl',      width: 40 },
+            { header: 'Platform',       key: 'platform',      width: 12 },
         ];
         const NUMERIC_KEYS = ['followers', 'totalViews', 'totalLikes', 'totalComments', 'totalShares'];
         const RATING_COL_IDX = COLUMNS.findIndex(c => c.key === 'rating') + 1;
@@ -738,14 +852,12 @@ app.get('/api/top-videos-by-brand', async (req, res) => {
         const results = await Influencer.aggregate([
             { $match: { authorName, platform, videoUrl: { $exists: true, $ne: '' } } },
             { $sort: { totalLikes: -1 } },
-            {
-                $group: {
-                    _id: '$brand', brand: { $first: '$brand' }, videoUrl: { $first: '$videoUrl' },
-                    totalLikes: { $first: '$totalLikes' }, totalViews: { $first: '$totalViews' },
-                    totalComments: { $first: '$totalComments' }, totalShares: { $first: '$totalShares' },
-                    caption: { $first: '$caption' }, category: { $first: '$category' },
-                }
-            },
+            { $group: {
+                _id: '$brand', brand: { $first: '$brand' }, videoUrl: { $first: '$videoUrl' },
+                totalLikes: { $first: '$totalLikes' }, totalViews: { $first: '$totalViews' },
+                totalComments: { $first: '$totalComments' }, totalShares: { $first: '$totalShares' },
+                caption: { $first: '$caption' }, category: { $first: '$category' },
+            }},
             { $sort: { totalLikes: -1 } },
             { $limit: 10 },
         ]);
@@ -833,9 +945,9 @@ app.post('/api/import-tiktok-json', async (req, res) => {
 app.post('/api/refresh-stats', async (req, res) => {
     const { maxVideos = 100, staleDays = 30 } = req.body || {};
     const staleDate = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000);
- 
+
     console.log(`🔄 Refresh Stats | maxVideos: ${maxVideos} | staleDays: ${staleDays}`);
- 
+
     try {
         // 1. หาคลิปที่ยังไม่เคย sync หรือ sync เกิน X วัน
         const staleVideos = await Influencer.find({
@@ -850,23 +962,23 @@ app.post('/api/refresh-stats', async (req, res) => {
         .limit(maxVideos)
         .select('videoUrl videoId authorName')
         .lean();
- 
+
         if (staleVideos.length === 0) {
             return res.json({ message: 'ทุกคลิปอัพเดตแล้ว ไม่มีอะไรต้อง refresh', refreshed: 0 });
         }
- 
+
         console.log(`   📋 พบ ${staleVideos.length} คลิปที่ต้องอัพเดต`);
- 
+
         // 2. Scrape ด้วย postURLs — ตรง videoId 100%
         const BATCH_SIZE = 20;  // Apify รับ URL ได้หลายอันต่อ call
         let totalUpdated = 0;
- 
+
         for (let i = 0; i < staleVideos.length; i += BATCH_SIZE) {
             const batch = staleVideos.slice(i, i + BATCH_SIZE);
             const postURLs = batch.map(v => v.videoUrl);
- 
+
             console.log(`   🔎 Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} URLs`);
- 
+
             try {
                 const input = {
                     postURLs,
@@ -878,17 +990,17 @@ app.post('/api/refresh-stats', async (req, res) => {
                 };
                 const run = await apifyRefreshClient.actor("clockworks/free-tiktok-scraper").call(input);
                 const { items } = await apifyRefreshClient.dataset(run.defaultDatasetId).listItems();
- 
+
                 if (!items || items.length === 0) {
                     console.log(`   ⚠️ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ไม่ได้ data`);
                     continue;
                 }
- 
+
                 // 3. อัพเดต MongoDB — ยอดคลิป + followers/avatar
                 for (const item of items) {
                     const authorName = item.authorMeta?.name;
                     if (!authorName) continue;
- 
+
                     // อัพเดต followers/avatar ทุก record ของ influencer นี้
                     await Influencer.updateMany(
                         { authorName, platform: 'tiktok' },
@@ -901,7 +1013,7 @@ app.post('/api/refresh-stats', async (req, res) => {
                             }
                         }
                     );
- 
+
                     // อัพเดตยอดคลิปตรง videoId
                     if (item.id) {
                         await Influencer.updateOne(
@@ -919,14 +1031,14 @@ app.post('/api/refresh-stats', async (req, res) => {
                         totalUpdated++;
                     }
                 }
- 
+
                 console.log(`   ✅ Batch done: ${items.length} items updated`);
- 
+
             } catch (batchErr) {
                 console.error(`   ❌ Batch error:`, batchErr.message);
             }
         }
- 
+
         // 4. Sync ไป Neo4j
         if (totalUpdated > 0) {
             const updatedNames = [...new Set(staleVideos.map(v => v.authorName))];
@@ -934,7 +1046,7 @@ app.post('/api/refresh-stats', async (req, res) => {
                 authorName: { $in: updatedNames },
                 platform: 'tiktok',
             });
- 
+
             const session = driver.session();
             try {
                 await session.run(`
@@ -962,14 +1074,14 @@ app.post('/api/refresh-stats', async (req, res) => {
                 });
             } finally { await session.close(); }
         }
- 
+
         console.log(`🔄 Refresh done: ${totalUpdated}/${staleVideos.length} clips updated`);
         res.json({
             message: `อัพเดตสำเร็จ ${totalUpdated} คลิป`,
             refreshed: totalUpdated,
             total: staleVideos.length,
         });
- 
+
     } catch (e) {
         console.error('❌ Refresh error:', e.message);
         res.status(500).json({ error: e.message });
@@ -989,16 +1101,6 @@ app.get('/api/last-refreshed', async (req, res) => {
         res.json({ lastRefreshed: latest?.lastSynced || null });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
- 
-const PORT = process.env.PORT || 5000;
-// ── Serve React Build (Production) ──
-if (process.env.NODE_ENV === 'production') {
-    const buildPath = path.join(__dirname, '..', '..', 'build');
-    app.use(express.static(buildPath));
-    app.get('*', (req, res) => {
-        if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
-            res.sendFile(path.join(buildPath, 'index.html'));
-        }
-    });
-}
+
+const PORT = 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
