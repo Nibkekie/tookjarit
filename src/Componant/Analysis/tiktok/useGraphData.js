@@ -41,6 +41,12 @@ export function useGraphData() {
                 }
             });
 
+            // ★ ลบ fx/fy ที่อาจค้างจาก grid layout
+            rawData.nodes.forEach(node => {
+                delete node.fx;
+                delete node.fy;
+            });
+
             setData({ nodes: rawData.nodes, links: [...Object.values(linkMap), ...phantomLinks] });
         } catch (err) {
             console.error('❌ TikTok graph error:', err);
