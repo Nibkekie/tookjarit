@@ -19,10 +19,7 @@ function daysSince(dateStr) {
 
 function formatRelative(dateStr) {
     if (!dateStr) return 'ไม่ทราบ';
-    const diff = Math.floor(daysSince(dateStr));
-    if (diff === 0) return 'วันนี้';
-    if (diff === 1) return 'เมื่อวาน';
-    return `${diff} วันที่แล้ว`;
+    return new Date(dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatDate(dateStr) {
